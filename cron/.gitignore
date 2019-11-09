@@ -1,0 +1,5 @@
+# Ignore environment variables
+env.lua
+
+# Ignore generated elasticsearch index json
+rbxapi_elasticsearch.json

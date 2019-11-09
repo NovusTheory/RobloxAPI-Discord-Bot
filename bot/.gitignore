@@ -1,0 +1,6 @@
+# Ignore environment variables
+env.lua
+
+# Ignore discordia generated files
+discordia.log
+gateway.json
