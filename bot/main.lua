@@ -153,8 +153,12 @@ local function getParametersString(object)
     return parametersConcat
 end
 
+local function wrapDevHubUrlMarkdown(text, path)
+    return "[" .. text .. "](" .. consts.ROBLOX_DEV_HUB_URL .. path .. ")"
+end
+
 client:on("messageCreate", function(message)
-    local success = pcall(function()
+    local success, err = pcall(function()
         local fullArgs = message.content:split(" ")
         if fullArgs[1] == client.user.mentionString then
             if #fullArgs > 1 then
@@ -188,6 +192,7 @@ client:on("messageCreate", function(message)
                             if document.inner_hits == nil then
                                 responseEmbed.author = {
                                     name = "Class " .. source.Name .. (source.Superclass == "<<<ROOT>>>" and "" or " : " .. source.Superclass),
+                                    url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/class/" .. source.Name,
                                     icon_url = client.user.avatarURL
                                 }
                                 
@@ -247,8 +252,13 @@ client:on("messageCreate", function(message)
 
                                 if #properties > 0 then
                                     local propertiesConcat = ""
+                                    local propertiesShown = 0
                                     for i,property in pairs(properties) do
-                                        propertiesConcat = propertiesConcat .. property.ValueType.Name .. " " .. property.Name
+                                        propertiesShown = propertiesShown + 1
+
+                                        local realMemberOwner = (property.InheritedFrom and property.InheritedFrom or source.Name)
+                                        local valueType = (property.ValueType.Category == "Class" and "class" or "type")
+                                        propertiesConcat = propertiesConcat .. wrapDevHubUrlMarkdown(property.ValueType.Name, "/api-reference/" .. valueType .. "/" .. property.ValueType.Name) .. " " .. wrapDevHubUrlMarkdown(property.Name, "/api-reference/property/" .. realMemberOwner .. "/" .. property.Name)
                                         if i ~= #properties then
                                             propertiesConcat = propertiesConcat .. "\n"
                                         end
@@ -260,15 +270,20 @@ client:on("messageCreate", function(message)
                                     end
 
                                     responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Properties",
+                                        name = "Properties (" .. propertiesShown .. "/" .. #properties .. ")",
                                         value = propertiesConcat
                                     }
                                 end
 
                                 if #functions > 0 then
                                     local functionsConcat = ""
+                                    local functionsShown = 0
                                     for i,_function in pairs(functions) do
-                                        functionsConcat = functionsConcat .. _function.ReturnType.Name .. " " .. _function.Name .. "(" .. getParametersString(_function) .. ")"
+                                        functionsShown = functionsShown + 1
+
+                                        local realMemberOwner = (_function.InheritedFrom and _function.InheritedFrom or source.Name)
+                                        local valueType = (_function.ReturnType.Category == "Class" and "class" or "type")
+                                        functionsConcat = functionsConcat .. wrapDevHubUrlMarkdown(_function.ReturnType.Name, "/api-reference/" .. valueType .. "/" .. _function.ReturnType.Name) .. " " .. wrapDevHubUrlMarkdown(_function.Name, "/api-reference/function/" .. realMemberOwner .. "/" .. _function.Name) .. "(" .. getParametersString(_function) .. ")"
                                         if i ~= #functions then
                                             functionsConcat = functionsConcat .. "\n"
                                         end
@@ -280,15 +295,19 @@ client:on("messageCreate", function(message)
                                     end
 
                                     responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Functions",
+                                        name = "Functions (" .. functionsShown .. "/" .. #functions .. ")",
                                         value = functionsConcat
                                     }
                                 end
 
                                 if #events > 0 then
                                     local eventsConcat = ""
+                                    local eventsShown = 0
                                     for i,event in pairs(events) do
-                                        eventsConcat = eventsConcat .. "RBXScriptSignal " .. event.Name .. "(" .. getParametersString(event) .. ")"
+                                        eventsShown = eventsShown + 1
+                                        
+                                        local realMemberOwner = (event.InheritedFrom and event.InheritedFrom or source.Name)
+                                        eventsConcat = eventsConcat .. wrapDevHubUrlMarkdown("RBXScriptSignal", "/api-reference/type/RBXScriptSignal") .. " " .. wrapDevHubUrlMarkdown(event.Name, "/api-reference/event/" .. realMemberOwner .. "/" .. event.Name) .. "(" .. getParametersString(event) .. ")"
                                         if i ~= #events then
                                             eventsConcat = eventsConcat .. "\n"
                                         end
@@ -300,7 +319,7 @@ client:on("messageCreate", function(message)
                                     end
 
                                     responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Events",
+                                        name = "Events (" .. eventsShown .. "/" .. #events .. ")",
                                         value = eventsConcat
                                     }
                                 end
@@ -354,20 +373,24 @@ client:on("messageCreate", function(message)
                                 
                                 responseEmbed.fields[#responseEmbed.fields + 1] = {
                                     name = "Member Of",
-                                    value = source.Name,
+                                    value = wrapDevHubUrlMarkdown(source.Name, "/api-reference/class/" .. source.Name),
                                     inline = true
                                 }
 
                                 if memberSource.MemberType == "Property" then
+                                    responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/property/" .. source.Name .. "/" .. memberSource.Name
+                                    local valueType = (memberSource.ValueType.Category == "Class" and "class" or "type")
                                     responseEmbed.fields[#responseEmbed.fields + 1] = {
                                         name = "Type",
-                                        value = memberSource.ValueType.Name,
+                                        value = wrapDevHubUrlMarkdown(memberSource.ValueType.Name, "/api-reference/" .. valueType .. "/" .. memberSource.ValueType.Name),
                                         inline = true
                                     }
                                 elseif memberSource.MemberType == "Function" then
+                                    responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/function/" .. source.Name .. "/" .. memberSource.Name
+                                    local valueType = (memberSource.ReturnType.Category == "Class" and "class" or "type")
                                     responseEmbed.fields[#responseEmbed.fields + 1] = {
                                         name = "Returns",
-                                        value = memberSource.ReturnType.Name,
+                                        value = wrapDevHubUrlMarkdown(memberSource.ReturnType.Name, "/api-reference/" .. valueType .. "/" .. memberSource.ReturnType.Name),
                                         inline = true
                                     }
 
@@ -378,6 +401,7 @@ client:on("messageCreate", function(message)
                                         inline = true
                                     }
                                 elseif memberSource.MemberType == "Event" then
+                                    responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/event/" .. source.Name .. "/" .. memberSource.Name
                                     local parameters = getParametersString(memberSource)
                                     responseEmbed.fields[#responseEmbed.fields + 1] = {
                                         name = "Parameters",
@@ -391,6 +415,11 @@ client:on("messageCreate", function(message)
                 end
 
                 if responseEmbedHasResult then
+                    responseEmbed.footer = {
+                        text = "Took " .. (searchResult.took / 1000) .. " seconds"
+                    }
+                    responseEmbed.timestamp = discordia.Date():toISO('T', 'Z')
+
                     message.channel:send({
                         embed = responseEmbed
                     })
@@ -429,6 +458,7 @@ client:on("messageCreate", function(message)
     end)
 
     if not success then
+        print(err)
         message:reply("An unexpected error occured, please try again later")
     end
 end)
