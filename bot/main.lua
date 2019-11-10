@@ -159,6 +159,10 @@ end
 
 client:on("messageCreate", function(message)
     local success, err = pcall(function()
+        if message.author.bot then
+            return
+        end
+
         local fullArgs = message.content:split(" ")
         if fullArgs[1] == client.user.mentionString then
             if #fullArgs > 1 then
