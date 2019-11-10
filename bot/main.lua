@@ -161,27 +161,6 @@ client:on("messageCreate", function(message)
                 local args = table.slice(fullArgs, 2)
                 local query = args[1]:split("%.")
 
-                if #query == 1 then
-                    if query[1]:lower() == "help" then
-                        message.channel:send({
-                            embed = {
-                                color = 41727,
-                                author = {
-                                    name = "Roblox API Help",
-                                    icon_url = client.user.avatarURL
-                                },
-                                fields = {
-                                    { 
-                                        name = "Usage",
-                                        value = client.user.mentionString .. " <class|member|class.member>"
-                                    }
-                                }
-                            }
-                        })
-                        return
-                    end
-                end
-
                 local searchResult = nil
                 if #query == 1 then
                     searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[1]))
@@ -430,7 +409,17 @@ client:on("messageCreate", function(message)
                         fields = {
                             { 
                                 name = "Developer",
-                                value = "NovusTheory"
+                                value = "NovusTheory",
+                                inline = true
+                            },
+                            {
+                                name = "GitHub",
+                                value = "https://github.com/NovusTheory/RobloxAPI-Discord-Bot",
+                                inline = true
+                            },
+                            { 
+                                name = "Usage",
+                                value = client.user.mentionString .. " <class|member|class.member>"
                             }
                         }
                     }
