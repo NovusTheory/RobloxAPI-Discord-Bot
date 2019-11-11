@@ -9,7 +9,7 @@ local discordia = require("discordia")
 discordia.extensions()
 local client = discordia.Client()
 
-local function getClassOrMemberSearchQuery(query)
+local function getClassOrMemberSearchQuery(query, boostClassSearch)
     local body = "{}\n"
     -- Add class query
     body = body .. json.stringify({
@@ -27,7 +27,9 @@ local function getClassOrMemberSearchQuery(query)
                                     },
                                     fuzziness = "AUTO"
                                 }
-                            }
+                            },
+                            boost = boostClassSearch and 10 or 0,
+                            boost_mode = "multiply"
                         }
                     }
                 }
@@ -59,6 +61,8 @@ local function getClassOrMemberSearchQuery(query)
                                 }
                             }
                         },
+                        boost = boostClassSearch and 0 or 10,
+                        boost_mode = "multiply",
                         functions = {
                             {
                                 filter = {
@@ -212,9 +216,9 @@ client:on("messageCreate", function(message)
 
                 local searchResult = nil
                 if #query == 1 then
-                    searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[1]))
+                    searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[1], true))
                 elseif #query == 2 then
-                    searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[2]))
+                    searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[2], false))
                 else
                     message:reply("Invalid search query provided")
                     return
