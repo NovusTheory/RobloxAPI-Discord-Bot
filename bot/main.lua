@@ -183,237 +183,246 @@ client:on("messageCreate", function(message)
                     fields = {}
                 }
                 local responseEmbedHasResult = false
-                
-                -- We're looking to obtain a class or member
+                local chosenResponse = nil
+
                 for _,response in pairs(searchResult.responses) do
                     if response.hits.total.value > 0 then
-                        if not responseEmbedHasResult then
-                            responseEmbedHasResult = true
-                            
-                            local document = response.hits.hits[1]
-                            local source = document._source
-                            -- No inner hits which means this is a parent document (a class)
-                            if document.inner_hits == nil then
-                                responseEmbed.author = {
-                                    name = "Class " .. source.Name .. (source.Superclass == "<<<ROOT>>>" and "" or " : " .. source.Superclass),
-                                    url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/class/" .. source.Name,
-                                    icon_url = client.user.avatarURL
-                                }
-                                
-                                if source.Tags ~= nil then
-                                    local tagsConcat = ""
-                                    for i,tag in pairs(source.Tags) do
-                                        tagsConcat = tagsConcat .. tag
-                                        if i ~= #source.Tags then
-                                            tagsConcat = tagsConcat .. ", "
-                                        end
-                                    end
+                        if chosenResponse == nil then
+                            chosenResponse = response
+                        else
+                            -- This response is likely more relevant to the user as it has a higher score
+                            if response.hits.max_score > chosenResponse.hits.max_score then
+                                chosenResponse = response
+                            end
+                        end
+                    end
+                end
 
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Tags",
-                                        value = tagsConcat,
-                                        inline = true
-                                    }
-                                else
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Tags",
-                                        value = "None",
-                                        inline = true
-                                    }
-                                end
-
-                                if source.Security ~= nil then
-                                    local value = "Read: " .. source.Security.Read .. "\nWrite: " .. source.Security.Write
-                                    if source.Security.Read == source.Security.Write then
-                                        value = source.Security.Read
-                                    end
-
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Security",
-                                        value = value,
-                                        inline = true
-                                    }
-                                else
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Security",
-                                        value = "None",
-                                        inline = true
-                                    }
-                                end
-
-                                local properties = {}
-                                local functions = {}
-                                local events = {}
-                                for _,member in pairs(source.Members) do
-                                    if member.MemberType == "Property" then
-                                        properties[#properties + 1] = member
-                                    elseif member.MemberType == "Function" then
-                                        functions[#functions + 1] = member
-                                    elseif member.MemberType == "Event" then
-                                        events[#events + 1] = member
-                                    end
-                                end
-
-                                if #properties > 0 then
-                                    local propertiesConcat = ""
-                                    local propertiesShown = 0
-                                    for i,property in pairs(properties) do
-                                        propertiesShown = propertiesShown + 1
-
-                                        local realMemberOwner = (property.InheritedFrom and property.InheritedFrom or source.Name)
-                                        local valueType = (property.ValueType.Category == "Class" and "class" or "type")
-                                        propertiesConcat = propertiesConcat .. wrapDevHubUrlMarkdown(property.ValueType.Name, "/api-reference/" .. valueType .. "/" .. property.ValueType.Name) .. " " .. wrapDevHubUrlMarkdown(property.Name, "/api-reference/property/" .. realMemberOwner .. "/" .. property.Name)
-                                        if i ~= #properties then
-                                            propertiesConcat = propertiesConcat .. "\n"
-                                        end
-
-                                        if i == 5 and i ~= #properties and i < #properties then
-                                            propertiesConcat = propertiesConcat .. "..."
-                                            break
-                                        end
-                                    end
-
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Properties (" .. propertiesShown .. "/" .. #properties .. ")",
-                                        value = propertiesConcat
-                                    }
-                                end
-
-                                if #functions > 0 then
-                                    local functionsConcat = ""
-                                    local functionsShown = 0
-                                    for i,_function in pairs(functions) do
-                                        functionsShown = functionsShown + 1
-
-                                        local realMemberOwner = (_function.InheritedFrom and _function.InheritedFrom or source.Name)
-                                        local valueType = (_function.ReturnType.Category == "Class" and "class" or "type")
-                                        functionsConcat = functionsConcat .. wrapDevHubUrlMarkdown(_function.ReturnType.Name, "/api-reference/" .. valueType .. "/" .. _function.ReturnType.Name) .. " " .. wrapDevHubUrlMarkdown(_function.Name, "/api-reference/function/" .. realMemberOwner .. "/" .. _function.Name) .. "(" .. getParametersString(_function) .. ")"
-                                        if i ~= #functions then
-                                            functionsConcat = functionsConcat .. "\n"
-                                        end
-
-                                        if i == 5 and i ~= #functions and i < #functions then
-                                            functionsConcat = functionsConcat .. "..."
-                                            break
-                                        end
-                                    end
-
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Functions (" .. functionsShown .. "/" .. #functions .. ")",
-                                        value = functionsConcat
-                                    }
-                                end
-
-                                if #events > 0 then
-                                    local eventsConcat = ""
-                                    local eventsShown = 0
-                                    for i,event in pairs(events) do
-                                        eventsShown = eventsShown + 1
-                                        
-                                        local realMemberOwner = (event.InheritedFrom and event.InheritedFrom or source.Name)
-                                        eventsConcat = eventsConcat .. wrapDevHubUrlMarkdown("RBXScriptSignal", "/api-reference/type/RBXScriptSignal") .. " " .. wrapDevHubUrlMarkdown(event.Name, "/api-reference/event/" .. realMemberOwner .. "/" .. event.Name) .. "(" .. getParametersString(event) .. ")"
-                                        if i ~= #events then
-                                            eventsConcat = eventsConcat .. "\n"
-                                        end
-
-                                        if i == 5 and i ~= #functions and i < #functions then
-                                            eventsConcat = eventsConcat .. "..."
-                                            break
-                                        end
-                                    end
-
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Events (" .. eventsShown .. "/" .. #events .. ")",
-                                        value = eventsConcat
-                                    }
-                                end
-                            else
-                                local memberSource = document.inner_hits.Members.hits.hits[1]._source
-                                responseEmbed.author = {
-                                    name = memberSource.MemberType .. " " .. memberSource.Name,
-                                    icon_url = client.user.avatarURL
-                                }
-
-                                if memberSource.Tags ~= nil then
-                                    local tagsConcat = ""
-                                    for i,tag in pairs(memberSource.Tags) do
-                                        tagsConcat = tagsConcat .. tag
-                                        if i ~= #memberSource.Tags then
-                                            tagsConcat = tagsConcat .. ", "
-                                        end
-                                    end
-
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Tags",
-                                        value = tagsConcat,
-                                        inline = true
-                                    }
-                                else
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Tags",
-                                        value = "None",
-                                        inline = true
-                                    }
-                                end
-
-                                if memberSource.Security ~= nil then
-                                    local value = "Read: " .. memberSource.Security.Read .. "\nWrite: " .. memberSource.Security.Write
-                                    if memberSource.Security.Read == memberSource.Security.Write then
-                                        value = memberSource.Security.Read
-                                    end
-
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Security",
-                                        value = value,
-                                        inline = true
-                                    }
-                                else
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Security",
-                                        value = "None",
-                                        inline = true
-                                    }
-                                end
-                                
-                                responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                    name = "Member Of",
-                                    value = wrapDevHubUrlMarkdown(source.Name, "/api-reference/class/" .. source.Name),
-                                    inline = true
-                                }
-
-                                if memberSource.MemberType == "Property" then
-                                    responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/property/" .. source.Name .. "/" .. memberSource.Name
-                                    local valueType = (memberSource.ValueType.Category == "Class" and "class" or "type")
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Type",
-                                        value = wrapDevHubUrlMarkdown(memberSource.ValueType.Name, "/api-reference/" .. valueType .. "/" .. memberSource.ValueType.Name),
-                                        inline = true
-                                    }
-                                elseif memberSource.MemberType == "Function" then
-                                    responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/function/" .. source.Name .. "/" .. memberSource.Name
-                                    local valueType = (memberSource.ReturnType.Category == "Class" and "class" or "type")
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Returns",
-                                        value = wrapDevHubUrlMarkdown(memberSource.ReturnType.Name, "/api-reference/" .. valueType .. "/" .. memberSource.ReturnType.Name),
-                                        inline = true
-                                    }
-
-                                    local parameters = getParametersString(memberSource)
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Parameters",
-                                        value = parameters == "" and "None" or parameters,
-                                        inline = true
-                                    }
-                                elseif memberSource.MemberType == "Event" then
-                                    responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/event/" .. source.Name .. "/" .. memberSource.Name
-                                    local parameters = getParametersString(memberSource)
-                                    responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                        name = "Parameters",
-                                        value = parameters == "" and "None" or parameters,
-                                        inline = true
-                                    }
+                if chosenResponse ~= nil then
+                    responseEmbedHasResult = true
+                    
+                    local document = chosenResponse.hits.hits[1]
+                    local source = document._source
+                    -- No inner hits which means this is a parent document (a class)
+                    if document.inner_hits == nil then
+                        responseEmbed.author = {
+                            name = "Class " .. source.Name .. (source.Superclass == "<<<ROOT>>>" and "" or " : " .. source.Superclass),
+                            url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/class/" .. source.Name,
+                            icon_url = client.user.avatarURL
+                        }
+                        
+                        if source.Tags ~= nil then
+                            local tagsConcat = ""
+                            for i,tag in pairs(source.Tags) do
+                                tagsConcat = tagsConcat .. tag
+                                if i ~= #source.Tags then
+                                    tagsConcat = tagsConcat .. ", "
                                 end
                             end
+
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Tags",
+                                value = tagsConcat,
+                                inline = true
+                            }
+                        else
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Tags",
+                                value = "None",
+                                inline = true
+                            }
+                        end
+
+                        if source.Security ~= nil then
+                            local value = "Read: " .. source.Security.Read .. "\nWrite: " .. source.Security.Write
+                            if source.Security.Read == source.Security.Write then
+                                value = source.Security.Read
+                            end
+
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Security",
+                                value = value,
+                                inline = true
+                            }
+                        else
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Security",
+                                value = "None",
+                                inline = true
+                            }
+                        end
+
+                        local properties = {}
+                        local functions = {}
+                        local events = {}
+                        for _,member in pairs(source.Members) do
+                            if member.MemberType == "Property" then
+                                properties[#properties + 1] = member
+                            elseif member.MemberType == "Function" then
+                                functions[#functions + 1] = member
+                            elseif member.MemberType == "Event" then
+                                events[#events + 1] = member
+                            end
+                        end
+
+                        if #properties > 0 then
+                            local propertiesConcat = ""
+                            local propertiesShown = 0
+                            for i,property in pairs(properties) do
+                                propertiesShown = propertiesShown + 1
+
+                                local realMemberOwner = (property.InheritedFrom and property.InheritedFrom or source.Name)
+                                local valueType = (property.ValueType.Category == "Class" and "class" or "type")
+                                propertiesConcat = propertiesConcat .. wrapDevHubUrlMarkdown(property.ValueType.Name, "/api-reference/" .. valueType .. "/" .. property.ValueType.Name) .. " " .. wrapDevHubUrlMarkdown(property.Name, "/api-reference/property/" .. realMemberOwner .. "/" .. property.Name)
+                                if i ~= #properties then
+                                    propertiesConcat = propertiesConcat .. "\n"
+                                end
+
+                                if i == 5 and i ~= #properties and i < #properties then
+                                    propertiesConcat = propertiesConcat .. "..."
+                                    break
+                                end
+                            end
+
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Properties (" .. propertiesShown .. "/" .. #properties .. ")",
+                                value = propertiesConcat
+                            }
+                        end
+
+                        if #functions > 0 then
+                            local functionsConcat = ""
+                            local functionsShown = 0
+                            for i,_function in pairs(functions) do
+                                functionsShown = functionsShown + 1
+
+                                local realMemberOwner = (_function.InheritedFrom and _function.InheritedFrom or source.Name)
+                                local valueType = (_function.ReturnType.Category == "Class" and "class" or "type")
+                                functionsConcat = functionsConcat .. wrapDevHubUrlMarkdown(_function.ReturnType.Name, "/api-reference/" .. valueType .. "/" .. _function.ReturnType.Name) .. " " .. wrapDevHubUrlMarkdown(_function.Name, "/api-reference/function/" .. realMemberOwner .. "/" .. _function.Name) .. "(" .. getParametersString(_function) .. ")"
+                                if i ~= #functions then
+                                    functionsConcat = functionsConcat .. "\n"
+                                end
+
+                                if i == 5 and i ~= #functions and i < #functions then
+                                    functionsConcat = functionsConcat .. "..."
+                                    break
+                                end
+                            end
+
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Functions (" .. functionsShown .. "/" .. #functions .. ")",
+                                value = functionsConcat
+                            }
+                        end
+
+                        if #events > 0 then
+                            local eventsConcat = ""
+                            local eventsShown = 0
+                            for i,event in pairs(events) do
+                                eventsShown = eventsShown + 1
+                                
+                                local realMemberOwner = (event.InheritedFrom and event.InheritedFrom or source.Name)
+                                eventsConcat = eventsConcat .. wrapDevHubUrlMarkdown("RBXScriptSignal", "/api-reference/type/RBXScriptSignal") .. " " .. wrapDevHubUrlMarkdown(event.Name, "/api-reference/event/" .. realMemberOwner .. "/" .. event.Name) .. "(" .. getParametersString(event) .. ")"
+                                if i ~= #events then
+                                    eventsConcat = eventsConcat .. "\n"
+                                end
+
+                                if i == 5 and i ~= #functions and i < #functions then
+                                    eventsConcat = eventsConcat .. "..."
+                                    break
+                                end
+                            end
+
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Events (" .. eventsShown .. "/" .. #events .. ")",
+                                value = eventsConcat
+                            }
+                        end
+                    else
+                        local memberSource = document.inner_hits.Members.hits.hits[1]._source
+                        responseEmbed.author = {
+                            name = memberSource.MemberType .. " " .. memberSource.Name,
+                            icon_url = client.user.avatarURL
+                        }
+
+                        if memberSource.Tags ~= nil then
+                            local tagsConcat = ""
+                            for i,tag in pairs(memberSource.Tags) do
+                                tagsConcat = tagsConcat .. tag
+                                if i ~= #memberSource.Tags then
+                                    tagsConcat = tagsConcat .. ", "
+                                end
+                            end
+
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Tags",
+                                value = tagsConcat,
+                                inline = true
+                            }
+                        else
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Tags",
+                                value = "None",
+                                inline = true
+                            }
+                        end
+
+                        if memberSource.Security ~= nil then
+                            local value = "Read: " .. memberSource.Security.Read .. "\nWrite: " .. memberSource.Security.Write
+                            if memberSource.Security.Read == memberSource.Security.Write then
+                                value = memberSource.Security.Read
+                            end
+
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Security",
+                                value = value,
+                                inline = true
+                            }
+                        else
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Security",
+                                value = "None",
+                                inline = true
+                            }
+                        end
+                        
+                        responseEmbed.fields[#responseEmbed.fields + 1] = {
+                            name = "Member Of",
+                            value = wrapDevHubUrlMarkdown(source.Name, "/api-reference/class/" .. source.Name),
+                            inline = true
+                        }
+
+                        if memberSource.MemberType == "Property" then
+                            responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/property/" .. source.Name .. "/" .. memberSource.Name
+                            local valueType = (memberSource.ValueType.Category == "Class" and "class" or "type")
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Type",
+                                value = wrapDevHubUrlMarkdown(memberSource.ValueType.Name, "/api-reference/" .. valueType .. "/" .. memberSource.ValueType.Name),
+                                inline = true
+                            }
+                        elseif memberSource.MemberType == "Function" then
+                            responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/function/" .. source.Name .. "/" .. memberSource.Name
+                            local valueType = (memberSource.ReturnType.Category == "Class" and "class" or "type")
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Returns",
+                                value = wrapDevHubUrlMarkdown(memberSource.ReturnType.Name, "/api-reference/" .. valueType .. "/" .. memberSource.ReturnType.Name),
+                                inline = true
+                            }
+
+                            local parameters = getParametersString(memberSource)
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Parameters",
+                                value = parameters == "" and "None" or parameters,
+                                inline = true
+                            }
+                        elseif memberSource.MemberType == "Event" then
+                            responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/event/" .. source.Name .. "/" .. memberSource.Name
+                            local parameters = getParametersString(memberSource)
+                            responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                name = "Parameters",
+                                value = parameters == "" and "None" or parameters,
+                                inline = true
+                            }
                         end
                     end
                 end
