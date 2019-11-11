@@ -195,6 +195,7 @@ client:on("messageCreate", function(message)
                     searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[2]))
                 else
                     message:reply("Invalid search query provided")
+                    return
                 end
 
                 local responseEmbed = {
