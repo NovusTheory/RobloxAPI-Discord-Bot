@@ -1,4 +1,6 @@
 local json = require("json")
+local fs = require("fs")
+local uv = require("uv")
 local env = require("./env")
 local consts = require("../consts")
 local elasticsearch = require("./elasticsearch")
@@ -187,6 +189,26 @@ client:on("messageCreate", function(message)
             if #fullArgs > 1 then
                 local args = table.slice(fullArgs, 2)
                 local query = args[1]:split("%.")
+
+                -- Developer commands
+                if message.author.id == client.owner.id then
+                    if args[1] == "-update" then
+                        if fs.existsSync(env.UPDATE_FILE) then
+                            local message = message:reply("Updating...")
+                            uv.spawn(env.UPDATE_FILE, {
+                                env = nil,
+                                detached = true
+                            }, function(code)
+                                -- It's expected this bot process will be restart if updating works. No need to check success here
+                                if code > 0 then
+                                    coroutine.wrap(message.setContent)(message, "**ERROR:** Failed to update")
+                                end
+                            end)
+                        end
+
+                        return
+                    end
+                end
 
                 local searchResult = nil
                 if #query == 1 then
