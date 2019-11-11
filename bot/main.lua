@@ -136,6 +136,25 @@ local function getClassOrMemberSearchQuery(query)
         }
     }) .. "\n"
 
+    -- Add suggest query
+    body = body .. "{}\n" .. json.stringify({
+        suggest = {
+            text = query,
+            class_suggestion = {
+                term = {
+                    field = "Name",
+                    suggest_mode = "always"
+                }
+            },
+            member_suggestion = {
+                term = {
+                    field = "Members.Name",
+                    suggest_mode = "always"
+                }
+            }
+        },
+    }) .. "\n"
+
     -- Required newline at end
     body = body .. "\n"
     return body
@@ -437,7 +456,38 @@ client:on("messageCreate", function(message)
                         embed = responseEmbed
                     })
                 else
-                    message:reply("No results found")
+                    local totalSuggestions = 0
+                    local suggestions = ""
+                    -- Find the suggestion responses
+                    for _,response in pairs(searchResult.responses) do
+                        if response.suggest ~= nil then
+                            for _,option in pairs(response.suggest.class_suggestion[1].options) do
+                                if totalSuggestions == 5 then
+                                    break
+                                end
+
+                                totalSuggestions = totalSuggestions + 1
+                                suggestions = suggestions .. "**" .. option.text .. "**" .. "\n"
+                            end
+
+                            for _,option in pairs(response.suggest.member_suggestion[1].options) do
+                                if totalSuggestions == 5 then
+                                    break
+                                end
+
+                                totalSuggestions = totalSuggestions + 1
+                                suggestions = suggestions .. "**" .. option.text .. "**" .. "\n"
+                            end
+
+                            break
+                        end
+                    end
+
+                    if totalSuggestions > 0 then
+                        message:reply("No results found, did you mean:\n" .. suggestions)
+                    else
+                        message:reply("No results found")
+                    end
                 end
             else
                 message.channel:send({
