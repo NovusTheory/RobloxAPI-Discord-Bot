@@ -8,158 +8,158 @@ local esClient = elasticsearch.Client(env.ELASTICSEARCH_ENDPOINT)
 local discordia = require("discordia")
 discordia.extensions()
 local client = discordia.Client()
+local elasticQueryBuilder = require("./elasticsearch/querybuilder")
+local QueryBuilder = elasticQueryBuilder.QueryBuilder
+local FunctionScore = elasticQueryBuilder.FunctionScore
+local Bool = elasticQueryBuilder.Bool
+local MultiMatch = elasticQueryBuilder.MultiMatch
+local Fuzzy = elasticQueryBuilder.Fuzzy
+local Nested = elasticQueryBuilder.Nested
+local Exists = elasticQueryBuilder.Exists
+local Match = elasticQueryBuilder.Match
+local Suggestion = elasticQueryBuilder.Suggestion
+local Suggest = elasticQueryBuilder.Suggest
+local Term = elasticQueryBuilder.Term
 
-local function getClassOrMemberSearchQuery(query, boostClassSearch)
+local function tohex(char)
+	return string.format('%%%02X', string.byte(char))
+end
+
+local function urlencode(obj)
+	return string.gsub(tostring(obj), '%W', tohex)
+end
+
+local function getClassOrMemberSearchQuery(searchQuery, boostClassSearch)
     local body = "{}\n"
-    -- Add class query
-    body = body .. json.stringify({
-        query = {
-            bool = {
-                must = {
-                    {
-                        function_score = {
-                            query = {
-                                multi_match = {
-                                    query = query,
-                                    fields = {
-                                        "Name^3",
-                                        "Superclass"
-                                    },
-                                    fuzziness = "AUTO"
-                                }
-                            },
-                            boost = boostClassSearch and 10 or 0,
-                            boost_mode = "multiply"
-                        }
-                    }
-                }
-           }
-        }
-    }) .. "\n"
 
-    -- Add member query
-    body = body .. "{}\n" .. json.stringify({
-        query = {
-            nested=  {
-                path = "Members",
-                query = {
-                    function_score = {
-                        query = {
-                            bool = {
-                                must = {
-                                    fuzzy = {
-                                        ["Members.Name"] = {
-                                            value = query,
-                                            fuzziness = "AUTO"
-                                        }
-                                    }
-                                },
-                                must_not = {
-                                    exists = {
-                                        field = "Members.InheritedFrom"
-                                    }
-                                }
-                            }
-                        },
-                        boost = boostClassSearch and 0 or 10,
-                        boost_mode = "multiply",
-                        functions = {
-                            {
-                                filter = {
-                                    bool = {
-                                        must_not = {
-                                            {
-                                                match = {
-                                                    ["Members.Tags"] = "Deprecated"
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                weight = 5
-                            }
-                        }
-                    }
-                },
-                inner_hits = { 
-                    highlight = {
-                        fields = {
-                            ["Members.Name"] = setmetatable({},{__jsontype="object"})
-                        }
-                    }
-                }
-            }
+    -- Generate class query
+    do
+        local queryBuilder = QueryBuilder:new()
+        local query = queryBuilder.query
+
+        local bool = Bool:new()
+        query:Add(bool)
+
+        local functionScore = FunctionScore:new()
+        functionScore.boost = boostClassSearch and 10 or 0
+        functionScore.boost_mode = "multiply"
+        bool.must:Add(functionScore)
+
+        local multiMatch = MultiMatch:new()
+        multiMatch.query = searchQuery
+        multiMatch.fields = {
+            "Name^3",
+            "Superclass"
         }
-    }) .. "\n"
+        multiMatch.fuzziness = "AUTO"
+        functionScore.query:Add(multiMatch)
+
+        -- Add class query to body json
+        body = body .. queryBuilder:Serialize() .. "\n"
+    end
+
+    -- Generate member query
+    do
+        local queryBuilder = QueryBuilder:new()
+        local query = queryBuilder.query
+
+        local nested = Nested:new()
+        nested.path = "Members"
+        nested.inner_hits.highlight:AddField("Members.Name", setmetatable({},{__jsontype="object"}))
+        query:Add(nested)
+
+        local functionScore = FunctionScore:new()
+        functionScore.boost = boostClassSearch and 0 or 10
+        functionScore.boost_mode = "multiply"
+        nested.query:Add(functionScore)
+
+        local functionScoreFunctions = functionScore.functions
+        functionScoreFunctions.weight = 5
+        local boolFilter = Bool:new()
+        local match = Match:new()
+        match:Add("Members.Tags", "Deprecated")
+        boolFilter.must_not:Add(match)
+        functionScoreFunctions:AddFilter(boolFilter)
+
+        local functionScoreBool = Bool:new()
+        functionScore.query:Add(functionScoreBool)
+
+        local fuzzy = Fuzzy:new()
+        fuzzy:Add("Members.Name", searchQuery, "AUTO")
+        functionScoreBool.must:Add(fuzzy)
+
+        local exists = Exists:new()
+        exists.field = "Members.InheritedFrom"
+        functionScoreBool.must_not:Add(exists)
+
+        -- Add member query
+        body = body .. "{}\n" .. queryBuilder:Serialize() .. "\n"
+    end
 
     -- TEMPORARY: Exact match member query (until fuzziness problems are sorted)
-    body = body .. "{}\n" .. json.stringify({
-        query = {
-            nested=  {
-                path = "Members",
-                query = {
-                    function_score = {
-                        query = {
-                            bool = {
-                                must = {
-                                    match = {
-                                        ["Members.Name"] = query
-                                    }
-                                },
-                                must_not = {
-                                    exists = {
-                                        field = "Members.InheritedFrom"
-                                    }
-                                }
-                            }
-                        },
-                        functions = {
-                            {
-                                filter = {
-                                    bool = {
-                                        must_not = {
-                                            {
-                                                match = {
-                                                    ["Members.Tags"] = "Deprecated"
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                weight = 5
-                            }
-                        }
-                    }
-                },
-                inner_hits = { 
-                    highlight = {
-                        fields = {
-                            ["Members.Name"] = setmetatable({},{__jsontype="object"})
-                        }
-                    }
-                }
-            }
-        }
-    }) .. "\n"
+    do
+        local queryBuilder = QueryBuilder:new()
+        local query = queryBuilder.query
 
-    -- Add suggest query
-    body = body .. "{}\n" .. json.stringify({
-        suggest = {
-            text = query,
-            class_suggestion = {
-                term = {
-                    field = "Name",
-                    suggest_mode = "always"
-                }
-            },
-            member_suggestion = {
-                term = {
-                    field = "Members.Name",
-                    suggest_mode = "always"
-                }
-            }
-        },
-    }) .. "\n"
+        local nested = Nested:new()
+        nested.path = "Members"
+        nested.inner_hits.highlight:AddField("Members.Name", setmetatable({},{__jsontype="object"}))
+        query:Add(nested)
+
+        local functionScore = FunctionScore:new()
+        functionScore.boost = boostClassSearch and 0 or 10
+        functionScore.boost_mode = "multiply"
+        nested.query:Add(functionScore)
+
+        local functionScoreFunctions = functionScore.functions
+        functionScoreFunctions.weight = 5
+        local boolFilter = Bool:new()
+        local match = Match:new()
+        match:Add("Members.Tags", "Deprecated")
+        boolFilter.must_not:Add(match)
+        functionScoreFunctions:AddFilter(boolFilter)
+
+        local functionScoreBool = Bool:new()
+        functionScore.query:Add(functionScoreBool)
+
+        local match = Match:new()
+        match:Add("Members.Name", searchQuery)
+        functionScoreBool.must:Add(match)
+
+        local exists = Exists:new()
+        exists.field = "Members.InheritedFrom"
+        functionScoreBool.must_not:Add(exists)
+
+        -- Add exact match member query
+        body = body .. "{}\n" .. queryBuilder:Serialize() .. "\n"
+    end
+
+    -- Generate suggest query
+    do
+        local suggest = Suggest:new()
+        suggest.text = searchQuery
+        
+        local classSuggestion = Suggestion:new("class_suggestion")
+        local classSuggestionTerm = Term:new()
+        classSuggestionTerm.field = "Name"
+        classSuggestionTerm.suggest_mode = "always"
+        classSuggestion:Add(classSuggestionTerm)
+        suggest:AddSuggestion(classSuggestion)
+
+        local memberSuggestion = Suggestion:new("member_suggestion")
+        local memberSuggestionTerm = Term:new()
+        memberSuggestionTerm.field = "Members.Name"
+        memberSuggestionTerm.suggest_mode = "always"
+        memberSuggestion:Add(memberSuggestionTerm)
+        suggest:AddSuggestion(memberSuggestion)
+
+        local index, suggestTable = suggest:Serialize()
+        local serializedSuggest = {}
+        serializedSuggest[index] = suggestTable
+
+        -- Add suggest query
+        body = body .. "{}\n" .. json.stringify(serializedSuggest) .. "\n"
+    end
 
     -- Required newline at end
     body = body .. "\n"
@@ -253,7 +253,7 @@ client:on("messageCreate", function(message)
                     if document.inner_hits == nil then
                         responseEmbed.author = {
                             name = "Class " .. source.Name .. (source.Superclass == "<<<ROOT>>>" and "" or " : " .. source.Superclass),
-                            url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/class/" .. source.Name,
+                            url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/class/" .. urlencode(source.Name),
                             icon_url = client.user.avatarURL
                         }
                         
@@ -319,7 +319,7 @@ client:on("messageCreate", function(message)
 
                                 local realMemberOwner = (property.InheritedFrom and property.InheritedFrom or source.Name)
                                 local valueType = (property.ValueType.Category == "Class" and "class" or "type")
-                                propertiesConcat = propertiesConcat .. wrapDevHubUrlMarkdown(property.ValueType.Name, "/api-reference/" .. valueType .. "/" .. property.ValueType.Name) .. " " .. wrapDevHubUrlMarkdown(property.Name, "/api-reference/property/" .. realMemberOwner .. "/" .. property.Name)
+                                propertiesConcat = propertiesConcat .. wrapDevHubUrlMarkdown(property.ValueType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(property.ValueType.Name)) .. " " .. wrapDevHubUrlMarkdown(property.Name, "/api-reference/property/" .. urlencode(realMemberOwner) .. "/" .. urlencode(property.Name))
                                 if i ~= #properties then
                                     propertiesConcat = propertiesConcat .. "\n"
                                 end
@@ -344,7 +344,7 @@ client:on("messageCreate", function(message)
 
                                 local realMemberOwner = (_function.InheritedFrom and _function.InheritedFrom or source.Name)
                                 local valueType = (_function.ReturnType.Category == "Class" and "class" or "type")
-                                functionsConcat = functionsConcat .. wrapDevHubUrlMarkdown(_function.ReturnType.Name, "/api-reference/" .. valueType .. "/" .. _function.ReturnType.Name) .. " " .. wrapDevHubUrlMarkdown(_function.Name, "/api-reference/function/" .. realMemberOwner .. "/" .. _function.Name) .. "(" .. getParametersString(_function) .. ")"
+                                functionsConcat = functionsConcat .. wrapDevHubUrlMarkdown(_function.ReturnType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(_function.ReturnType.Name)) .. " " .. wrapDevHubUrlMarkdown(_function.Name, "/api-reference/function/" .. urlencode(realMemberOwner) .. "/" .. urlencode(_function.Name)) .. "(" .. getParametersString(_function) .. ")"
                                 if i ~= #functions then
                                     functionsConcat = functionsConcat .. "\n"
                                 end
@@ -368,7 +368,7 @@ client:on("messageCreate", function(message)
                                 eventsShown = eventsShown + 1
                                 
                                 local realMemberOwner = (event.InheritedFrom and event.InheritedFrom or source.Name)
-                                eventsConcat = eventsConcat .. wrapDevHubUrlMarkdown("RBXScriptSignal", "/api-reference/type/RBXScriptSignal") .. " " .. wrapDevHubUrlMarkdown(event.Name, "/api-reference/event/" .. realMemberOwner .. "/" .. event.Name) .. "(" .. getParametersString(event) .. ")"
+                                eventsConcat = eventsConcat .. wrapDevHubUrlMarkdown("RBXScriptSignal", "/api-reference/type/RBXScriptSignal") .. " " .. wrapDevHubUrlMarkdown(event.Name, "/api-reference/event/" .. urlencode(realMemberOwner) .. "/" .. urlencode(event.Name)) .. "(" .. getParametersString(event) .. ")"
                                 if i ~= #events then
                                     eventsConcat = eventsConcat .. "\n"
                                 end
@@ -434,24 +434,24 @@ client:on("messageCreate", function(message)
                         
                         responseEmbed.fields[#responseEmbed.fields + 1] = {
                             name = "Member Of",
-                            value = wrapDevHubUrlMarkdown(source.Name, "/api-reference/class/" .. source.Name),
+                            value = wrapDevHubUrlMarkdown(source.Name, "/api-reference/class/" .. urlencode(source.Name)),
                             inline = true
                         }
 
                         if memberSource.MemberType == "Property" then
-                            responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/property/" .. source.Name .. "/" .. memberSource.Name
+                            responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/property/" .. urlencode(source.Name) .. "/" .. urlencode(memberSource.Name)
                             local valueType = (memberSource.ValueType.Category == "Class" and "class" or "type")
                             responseEmbed.fields[#responseEmbed.fields + 1] = {
                                 name = "Type",
-                                value = wrapDevHubUrlMarkdown(memberSource.ValueType.Name, "/api-reference/" .. valueType .. "/" .. memberSource.ValueType.Name),
+                                value = wrapDevHubUrlMarkdown(memberSource.ValueType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(memberSource.ValueType.Name)),
                                 inline = true
                             }
                         elseif memberSource.MemberType == "Function" then
-                            responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/function/" .. source.Name .. "/" .. memberSource.Name
+                            responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/function/" .. urlencode(source.Name) .. "/" .. urlencode(memberSource.Name)
                             local valueType = (memberSource.ReturnType.Category == "Class" and "class" or "type")
                             responseEmbed.fields[#responseEmbed.fields + 1] = {
                                 name = "Returns",
-                                value = wrapDevHubUrlMarkdown(memberSource.ReturnType.Name, "/api-reference/" .. valueType .. "/" .. memberSource.ReturnType.Name),
+                                value = wrapDevHubUrlMarkdown(memberSource.ReturnType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(memberSource.ReturnType.Name)),
                                 inline = true
                             }
 
@@ -462,7 +462,7 @@ client:on("messageCreate", function(message)
                                 inline = true
                             }
                         elseif memberSource.MemberType == "Event" then
-                            responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/event/" .. source.Name .. "/" .. memberSource.Name
+                            responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/event/" .. urlencode(source.Name) .. "/" .. urlencode(memberSource.Name)
                             local parameters = getParametersString(memberSource)
                             responseEmbed.fields[#responseEmbed.fields + 1] = {
                                 name = "Parameters",
