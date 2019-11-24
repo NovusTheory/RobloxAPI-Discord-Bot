@@ -315,17 +315,23 @@ client:on("messageCreate", function(message)
                             local propertiesConcat = ""
                             local propertiesShown = 0
                             for i,property in pairs(properties) do
-                                propertiesShown = propertiesShown + 1
-
                                 local realMemberOwner = (property.InheritedFrom and property.InheritedFrom or source.Name)
                                 local valueType = (property.ValueType.Category == "Class" and "class" or "type")
-                                propertiesConcat = propertiesConcat .. wrapDevHubUrlMarkdown(property.ValueType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(property.ValueType.Name)) .. " " .. wrapDevHubUrlMarkdown(property.Name, "/api-reference/property/" .. urlencode(realMemberOwner) .. "/" .. urlencode(property.Name))
+
+                                local appendedProperty = propertiesConcat .. wrapDevHubUrlMarkdown(property.ValueType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(property.ValueType.Name)) .. " " .. wrapDevHubUrlMarkdown(property.Name, "/api-reference/property/" .. urlencode(realMemberOwner) .. "/" .. urlencode(property.Name))
+                                if #propertiesConcat + #appendedProperty > 1024 then
+                                    -- Discord does not permit field values to go over 1024 characters, we can't show more properties
+                                    break
+                                end
+                                
+                                propertiesConcat = appendedProperty
                                 if i ~= #properties then
                                     propertiesConcat = propertiesConcat .. "\n"
                                 end
 
+                                propertiesShown = propertiesShown + 1
+
                                 if i == 5 and i ~= #properties and i < #properties then
-                                    propertiesConcat = propertiesConcat .. "..."
                                     break
                                 end
                             end
@@ -340,17 +346,23 @@ client:on("messageCreate", function(message)
                             local functionsConcat = ""
                             local functionsShown = 0
                             for i,_function in pairs(functions) do
-                                functionsShown = functionsShown + 1
-
                                 local realMemberOwner = (_function.InheritedFrom and _function.InheritedFrom or source.Name)
                                 local valueType = (_function.ReturnType.Category == "Class" and "class" or "type")
-                                functionsConcat = functionsConcat .. wrapDevHubUrlMarkdown(_function.ReturnType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(_function.ReturnType.Name)) .. " " .. wrapDevHubUrlMarkdown(_function.Name, "/api-reference/function/" .. urlencode(realMemberOwner) .. "/" .. urlencode(_function.Name)) .. "(" .. getParametersString(_function) .. ")"
+
+                                local appendedFunction = functionsConcat .. wrapDevHubUrlMarkdown(_function.ReturnType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(_function.ReturnType.Name)) .. " " .. wrapDevHubUrlMarkdown(_function.Name, "/api-reference/function/" .. urlencode(realMemberOwner) .. "/" .. urlencode(_function.Name)) .. "(" .. getParametersString(_function) .. ")"
+                                if #functionsConcat + #appendedFunction > 1024 then
+                                    -- Discord does not permit field values to go over 1024 characters, we can't show more properties
+                                    break
+                                end
+
+                                functionsConcat = appendedFunction
                                 if i ~= #functions then
                                     functionsConcat = functionsConcat .. "\n"
                                 end
 
+                                functionsShown = functionsShown + 1
+
                                 if i == 5 and i ~= #functions and i < #functions then
-                                    functionsConcat = functionsConcat .. "..."
                                     break
                                 end
                             end
@@ -364,17 +376,23 @@ client:on("messageCreate", function(message)
                         if #events > 0 then
                             local eventsConcat = ""
                             local eventsShown = 0
-                            for i,event in pairs(events) do
-                                eventsShown = eventsShown + 1
-                                
+                            for i,event in pairs(events) do                                
                                 local realMemberOwner = (event.InheritedFrom and event.InheritedFrom or source.Name)
-                                eventsConcat = eventsConcat .. wrapDevHubUrlMarkdown("RBXScriptSignal", "/api-reference/type/RBXScriptSignal") .. " " .. wrapDevHubUrlMarkdown(event.Name, "/api-reference/event/" .. urlencode(realMemberOwner) .. "/" .. urlencode(event.Name)) .. "(" .. getParametersString(event) .. ")"
+
+                                local appendedEvent = eventsConcat .. wrapDevHubUrlMarkdown("RBXScriptSignal", "/api-reference/type/RBXScriptSignal") .. " " .. wrapDevHubUrlMarkdown(event.Name, "/api-reference/event/" .. urlencode(realMemberOwner) .. "/" .. urlencode(event.Name)) .. "(" .. getParametersString(event) .. ")"
+                                if #eventsConcat + #appendedEvent > 1024 then
+                                    -- Discord does not permit field values to go over 1024 characters, we can't show more properties
+                                    break
+                                end
+
+                                eventsConcat = appendedEvent
                                 if i ~= #events then
                                     eventsConcat = eventsConcat .. "\n"
                                 end
 
+                                eventsShown = eventsShown + 1
+
                                 if i == 5 and i ~= #functions and i < #functions then
-                                    eventsConcat = eventsConcat .. "..."
                                     break
                                 end
                             end
