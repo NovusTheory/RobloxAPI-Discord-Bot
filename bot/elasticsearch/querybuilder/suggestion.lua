@@ -11,11 +11,13 @@ function suggestion:Serialize()
         local index, serializedObj = unserialized:Serialize()
         serializedQuery[index] = serializedObj
     end
+    serializedQuery.text = self.text
     return self.indexName, serializedQuery
 end
 
 function suggestion:new(indexName)
     local suggestionObj = {
+        text = nil,
         indexName = indexName,
         unserialized = {}
     }

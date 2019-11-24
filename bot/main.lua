@@ -14,7 +14,7 @@ local FunctionScore = elasticQueryBuilder.FunctionScore
 local Bool = elasticQueryBuilder.Bool
 local MultiMatch = elasticQueryBuilder.MultiMatch
 local Fuzzy = elasticQueryBuilder.Fuzzy
-local Nested = elasticQueryBuilder.Nested
+local NestedQuery = elasticQueryBuilder.Nested
 local Exists = elasticQueryBuilder.Exists
 local Match = elasticQueryBuilder.Match
 local Suggestion = elasticQueryBuilder.Suggestion
@@ -29,7 +29,7 @@ local function urlencode(obj)
 	return string.gsub(tostring(obj), '%W', tohex)
 end
 
-local function getClassOrMemberSearchQuery(searchQuery, boostClassSearch)
+local function getClassOrMemberSearchQuery(classQuery, memberQuery, boostClassSearch)
     local body = "{}\n"
 
     -- Generate class query
@@ -40,19 +40,39 @@ local function getClassOrMemberSearchQuery(searchQuery, boostClassSearch)
         local bool = Bool:new()
         query:Add(bool)
 
-        local functionScore = FunctionScore:new()
-        functionScore.boost = boostClassSearch and 10 or 0
-        functionScore.boost_mode = "multiply"
-        bool.must:Add(functionScore)
+        local classMatch = Match:new()
+        classMatch:Add("Name", {
+            query = classQuery,
+            fuzziness = "AUTO",
+            boost = boostClassSearch and 10 or 0 -- If we're searching for a class we boost it above the member search below
+        })
+        bool.must:Add(classMatch)
 
-        local multiMatch = MultiMatch:new()
-        multiMatch.query = searchQuery
-        multiMatch.fields = {
-            "Name^3",
-            "Superclass"
-        }
-        multiMatch.fuzziness = "AUTO"
-        functionScore.query:Add(multiMatch)
+        local classMatchExact = Match:new()
+        classMatchExact:Add("Name", {
+            query = classQuery,
+            boost = 20 -- Boosts above the member match and member match exact if a class matches this exactly
+        })
+        bool.should:Add(classMatchExact)
+
+        -- If we're doing a search such as Class.Member then we'll fill this in. Response will be a member since inner_hits is defined
+        if memberQuery ~= nil then
+            local nested = NestedQuery:new()
+            nested.path = "Members"
+            bool.must:Add(nested)
+
+            local nestedBool = Bool:new()
+            nested.query:Add(nestedBool)
+
+            local memberMatch = Match:new()
+            memberMatch:Add("Members.Name", {
+                query = memberQuery,
+                fuzziness = "AUTO"
+            })
+            nestedBool.must:Add(memberMatch)
+
+            nested.inner_hits.highlight:AddField("Members.Name", setmetatable({},{__jsontype="object"}))
+        end
 
         -- Add class query to body json
         body = body .. queryBuilder:Serialize() .. "\n"
@@ -60,7 +80,7 @@ local function getClassOrMemberSearchQuery(searchQuery, boostClassSearch)
 
     -- Generate member query
     do
-        local queryBuilder = QueryBuilder:new()
+        --[[local queryBuilder = QueryBuilder:new()
         local query = queryBuilder.query
 
         local nested = Nested:new()
@@ -93,53 +113,61 @@ local function getClassOrMemberSearchQuery(searchQuery, boostClassSearch)
         functionScoreBool.must_not:Add(exists)
 
         -- Add member query
-        body = body .. "{}\n" .. queryBuilder:Serialize() .. "\n"
-    end
+        body = body .. "{}\n" .. queryBuilder:Serialize() .. "\n"]]
 
-    -- TEMPORARY: Exact match member query (until fuzziness problems are sorted)
-    do
-        local queryBuilder = QueryBuilder:new()
-        local query = queryBuilder.query
+        -- This only runs if the the search query is a single word search not Class.Member
+        if memberQuery == nil then
+            memberQuery = classQuery
 
-        local nested = Nested:new()
-        nested.path = "Members"
-        nested.inner_hits.highlight:AddField("Members.Name", setmetatable({},{__jsontype="object"}))
-        query:Add(nested)
+            local queryBuilder = QueryBuilder:new()
+            local query = queryBuilder.query
 
-        local functionScore = FunctionScore:new()
-        functionScore.boost = boostClassSearch and 0 or 10
-        functionScore.boost_mode = "multiply"
-        nested.query:Add(functionScore)
+            local bool = Bool:new()
+            query:Add(bool)
 
-        local functionScoreFunctions = functionScore.functions
-        functionScoreFunctions.weight = 5
-        local boolFilter = Bool:new()
-        local match = Match:new()
-        match:Add("Members.Tags", "Deprecated")
-        boolFilter.must_not:Add(match)
-        functionScoreFunctions:AddFilter(boolFilter)
+            local nested = NestedQuery:new()
+            nested.path = "Members"
+            bool.must:Add(nested)
 
-        local functionScoreBool = Bool:new()
-        functionScore.query:Add(functionScoreBool)
+            local nestedBool = Bool:new()
+            nested.query:Add(nestedBool)
 
-        local match = Match:new()
-        match:Add("Members.Name", searchQuery)
-        functionScoreBool.must:Add(match)
+            local memberMatch = Match:new()
+            memberMatch:Add("Members.Name", {
+                query = memberQuery,
+                fuzziness = "AUTO",
+                boost = boostClassSearch and 0 or 10
+            })
+            nestedBool.must:Add(memberMatch)
 
-        local exists = Exists:new()
-        exists.field = "Members.InheritedFrom"
-        functionScoreBool.must_not:Add(exists)
+            local memberMatchExact = Match:new()
+            memberMatchExact:Add("Members.Name", {
+                query = memberQuery,
+                boost = 15 -- Boosts above the class match if there is one
+            })
+            nestedBool.should:Add(memberMatchExact)
 
-        -- Add exact match member query
-        body = body .. "{}\n" .. queryBuilder:Serialize() .. "\n"
+            local deprecatedMatch = Match:new()
+            deprecatedMatch:Add("Members.Tags", "Deprecated")
+            nestedBool.must_not:Add(deprecatedMatch)
+
+            nested.inner_hits.highlight:AddField("Members.Name", setmetatable({},{__jsontype="object"}))
+
+            -- Add member query to body json
+            body = body .. "{}\n" .. queryBuilder:Serialize() .. "\n"
+        end
     end
 
     -- Generate suggest query
     do
+        if memberQuery == nil then
+            memberQuery = classQuery
+        end
+
         local suggest = Suggest:new()
-        suggest.text = searchQuery
-        
+
         local classSuggestion = Suggestion:new("class_suggestion")
+        classSuggestion.text = classQuery
         local classSuggestionTerm = Term:new()
         classSuggestionTerm.field = "Name"
         classSuggestionTerm.suggest_mode = "always"
@@ -147,6 +175,7 @@ local function getClassOrMemberSearchQuery(searchQuery, boostClassSearch)
         suggest:AddSuggestion(classSuggestion)
 
         local memberSuggestion = Suggestion:new("member_suggestion")
+        memberSuggestion.text = memberQuery
         local memberSuggestionTerm = Term:new()
         memberSuggestionTerm.field = "Members.Name"
         memberSuggestionTerm.suggest_mode = "always"
@@ -216,9 +245,9 @@ client:on("messageCreate", function(message)
 
                 local searchResult = nil
                 if #query == 1 then
-                    searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[1], true))
+                    searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[1], nil, true))
                 elseif #query == 2 then
-                    searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[2], false))
+                    searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[1], query[2], false))
                 else
                     message:reply("Invalid search query provided")
                     return

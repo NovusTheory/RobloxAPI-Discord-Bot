@@ -9,7 +9,13 @@ function must:Serialize()
     local serializedMust = {}
     for _,unserialized in pairs(self.unserialized) do
         local index, serializedObj = unserialized:Serialize()
-        serializedMust[index] = serializedObj
+        if #self.unserialized > 0 then
+            local serialized = {}
+            serialized[index] = serializedObj
+            serializedMust[#serializedMust + 1] = serialized
+        else
+            serializedMust[index] = serializedObj
+        end
     end
     return "must", serializedMust
 end
