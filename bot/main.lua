@@ -602,7 +602,7 @@ client:on("messageCreate", function(message)
                                     local valueType = (_function.ReturnType.Category == "Class" and "class" or "type")
 
                                     local appendedFunction = functionsConcat .. wrapDevHubUrlMarkdown(_function.ReturnType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(_function.ReturnType.Name)) .. " " .. wrapDevHubUrlMarkdown(_function.Name, "/api-reference/function/" .. urlencode(realMemberOwner) .. "/" .. urlencode(_function.Name)) .. "(" .. getParametersString(_function) .. ")"
-                                    if #functionsConcat + #appendedFunction > 1024 then
+                                    if #functionsConcat + #appendedFunction > 2048 then
                                         -- Discord does not permit field values to go over 1024 characters, we can't show more properties
                                         break
                                     end
@@ -629,7 +629,7 @@ client:on("messageCreate", function(message)
                                     local realMemberOwner = (event.InheritedFrom and event.InheritedFrom or source.Name)
 
                                     local appendedEvent = eventsConcat .. wrapDevHubUrlMarkdown("RBXScriptSignal", "/api-reference/type/RBXScriptSignal") .. " " .. wrapDevHubUrlMarkdown(event.Name, "/api-reference/event/" .. urlencode(realMemberOwner) .. "/" .. urlencode(event.Name)) .. "(" .. getParametersString(event) .. ")"
-                                    if #eventsConcat + #appendedEvent > 1024 then
+                                    if #eventsConcat + #appendedEvent > 2048 then
                                         -- Discord does not permit field values to go over 1024 characters, we can't show more properties
                                         break
                                     end
