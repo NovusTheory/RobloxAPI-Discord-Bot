@@ -80,41 +80,6 @@ local function getClassOrMemberSearchQuery(classQuery, memberQuery, boostClassSe
 
     -- Generate member query
     do
-        --[[local queryBuilder = QueryBuilder:new()
-        local query = queryBuilder.query
-
-        local nested = Nested:new()
-        nested.path = "Members"
-        nested.inner_hits.highlight:AddField("Members.Name", setmetatable({},{__jsontype="object"}))
-        query:Add(nested)
-
-        local functionScore = FunctionScore:new()
-        functionScore.boost = boostClassSearch and 0 or 10
-        functionScore.boost_mode = "multiply"
-        nested.query:Add(functionScore)
-
-        local functionScoreFunctions = functionScore.functions
-        functionScoreFunctions.weight = 5
-        local boolFilter = Bool:new()
-        local match = Match:new()
-        match:Add("Members.Tags", "Deprecated")
-        boolFilter.must_not:Add(match)
-        functionScoreFunctions:AddFilter(boolFilter)
-
-        local functionScoreBool = Bool:new()
-        functionScore.query:Add(functionScoreBool)
-
-        local fuzzy = Fuzzy:new()
-        fuzzy:Add("Members.Name", searchQuery, "AUTO")
-        functionScoreBool.must:Add(fuzzy)
-
-        local exists = Exists:new()
-        exists.field = "Members.InheritedFrom"
-        functionScoreBool.must_not:Add(exists)
-
-        -- Add member query
-        body = body .. "{}\n" .. queryBuilder:Serialize() .. "\n"]]
-
         -- This only runs if the the search query is a single word search not Class.Member
         if memberQuery == nil then
             memberQuery = classQuery
