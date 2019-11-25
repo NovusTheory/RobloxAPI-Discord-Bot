@@ -548,7 +548,7 @@ client:on("messageCreate", function(message)
 
                         responseEmbed.author = {
                             name = authorName,
-                            url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/class/" .. urlencode(source.Name),
+                            url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/class/" .. urlencode(source.Name) .. "#" .. string.lower(expandedQuery),
                             icon_url = client.user.avatarURL
                         }
 
