@@ -160,6 +160,39 @@ local function getClassOrMemberSearchQuery(classQuery, memberQuery, boostClassSe
     return body
 end
 
+local function getClassQuery(classQuery)
+    local body = "{}\n"
+
+    -- Generate class query
+    do
+        local queryBuilder = QueryBuilder:new()
+        local query = queryBuilder.query
+
+        local bool = Bool:new()
+        query:Add(bool)
+
+        local classMatch = Match:new()
+        classMatch:Add("Name", {
+            query = classQuery,
+            fuzziness = "AUTO"
+        })
+        bool.must:Add(classMatch)
+
+        local classMatchExact = Match:new()
+        classMatchExact:Add("Name", {
+            query = classQuery,
+        })
+        bool.should:Add(classMatchExact)
+
+        -- Add class query to body json
+        body = body .. queryBuilder:Serialize() .. "\n"
+    end
+
+    -- Required newline at end
+    body = body .. "\n"
+    return body
+end
+
 local function getParametersString(object)
     local parametersConcat = ""
     for i,parameter in pairs(object.Parameters) do
@@ -209,8 +242,26 @@ client:on("messageCreate", function(message)
                 end
 
                 local searchResult = nil
+                local isExpansionQuery = false
+                local expandedQuery = nil
+
                 if #query == 1 then
-                    searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[1], nil, true))
+                    local thirdArgLower = string.lower(fullArgs[3])
+                    if thirdArgLower == "properties" or thirdArgLower == "props" or thirdArgLower == "p" then
+                        isExpansionQuery = true
+                        expandedQuery = "PROPERTIES"
+                        searchResult = esClient:msearch("robloxapi", getClassQuery(query[1]))
+                    elseif thirdArgLower == "functions" or thirdArgLower == "funcs" or thirdArgLower == "f" then
+                        isExpansionQuery = true
+                        expandedQuery = "FUNCTIONS"
+                        searchResult = esClient:msearch("robloxapi", getClassQuery(query[1]))
+                    elseif thirdArgLower == "events" or thirdArgLower == "evts" or thirdArgLower == "e" then
+                        isExpansionQuery = true
+                        expandedQuery = "EVENTS"
+                        searchResult = esClient:msearch("robloxapi", getClassQuery(query[1]))
+                    else
+                        searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[1], nil, true))
+                    end
                 elseif #query == 2 then
                     searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[1], query[2], false))
                 else
@@ -243,54 +294,263 @@ client:on("messageCreate", function(message)
                     
                     local document = chosenResponse.hits.hits[1]
                     local source = document._source
-                    -- No inner hits which means this is a parent document (a class)
-                    if document.inner_hits == nil then
-                        responseEmbed.author = {
-                            name = "Class " .. source.Name .. (source.Superclass == "<<<ROOT>>>" and "" or " : " .. source.Superclass),
-                            url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/class/" .. urlencode(source.Name),
-                            icon_url = client.user.avatarURL
-                        }
-                        
-                        if source.Tags ~= nil then
-                            local tagsConcat = ""
-                            for i,tag in pairs(source.Tags) do
-                                tagsConcat = tagsConcat .. tag
-                                if i ~= #source.Tags then
-                                    tagsConcat = tagsConcat .. ", "
+                    if not isExpansionQuery then
+                        -- No inner hits which means this is a parent document (a class)
+                        if document.inner_hits == nil then
+                            responseEmbed.author = {
+                                name = "Class " .. source.Name .. (source.Superclass == "<<<ROOT>>>" and "" or " : " .. source.Superclass),
+                                url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/class/" .. urlencode(source.Name),
+                                icon_url = client.user.avatarURL
+                            }
+                            
+                            if source.Tags ~= nil then
+                                local tagsConcat = ""
+                                for i,tag in pairs(source.Tags) do
+                                    tagsConcat = tagsConcat .. tag
+                                    if i ~= #source.Tags then
+                                        tagsConcat = tagsConcat .. ", "
+                                    end
+                                end
+
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Tags",
+                                    value = tagsConcat,
+                                    inline = true
+                                }
+                            else
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Tags",
+                                    value = "None",
+                                    inline = true
+                                }
+                            end
+
+                            if source.Security ~= nil then
+                                local value = "Read: " .. source.Security.Read .. "\nWrite: " .. source.Security.Write
+                                if source.Security.Read == source.Security.Write then
+                                    value = source.Security.Read
+                                end
+
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Security",
+                                    value = value,
+                                    inline = true
+                                }
+                            else
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Security",
+                                    value = "None",
+                                    inline = true
+                                }
+                            end
+
+                            local properties = {}
+                            local functions = {}
+                            local events = {}
+                            for _,member in pairs(source.Members) do
+                                if member.MemberType == "Property" then
+                                    properties[#properties + 1] = member
+                                elseif member.MemberType == "Function" then
+                                    functions[#functions + 1] = member
+                                elseif member.MemberType == "Event" then
+                                    events[#events + 1] = member
                                 end
                             end
 
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Tags",
-                                value = tagsConcat,
-                                inline = true
-                            }
-                        else
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Tags",
-                                value = "None",
-                                inline = true
-                            }
-                        end
+                            if #properties > 0 then
+                                local propertiesConcat = ""
+                                local propertiesShown = 0
+                                for i,property in pairs(properties) do
+                                    local realMemberOwner = (property.InheritedFrom and property.InheritedFrom or source.Name)
+                                    local valueType = (property.ValueType.Category == "Class" and "class" or "type")
 
-                        if source.Security ~= nil then
-                            local value = "Read: " .. source.Security.Read .. "\nWrite: " .. source.Security.Write
-                            if source.Security.Read == source.Security.Write then
-                                value = source.Security.Read
+                                    local appendedProperty = propertiesConcat .. wrapDevHubUrlMarkdown(property.ValueType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(property.ValueType.Name)) .. " " .. wrapDevHubUrlMarkdown(property.Name, "/api-reference/property/" .. urlencode(realMemberOwner) .. "/" .. urlencode(property.Name))
+                                    if #propertiesConcat + #appendedProperty > 1024 then
+                                        -- Discord does not permit field values to go over 1024 characters, we can't show more properties
+                                        break
+                                    end
+                                    
+                                    propertiesConcat = appendedProperty
+                                    if i ~= #properties then
+                                        propertiesConcat = propertiesConcat .. "\n"
+                                    end
+
+                                    propertiesShown = propertiesShown + 1
+
+                                    if i == 5 and i ~= #properties and i < #properties then
+                                        break
+                                    end
+                                end
+
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Properties (" .. propertiesShown .. "/" .. #properties .. ")",
+                                    value = propertiesConcat
+                                }
                             end
 
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Security",
-                                value = value,
-                                inline = true
-                            }
+                            if #functions > 0 then
+                                local functionsConcat = ""
+                                local functionsShown = 0
+                                for i,_function in pairs(functions) do
+                                    local realMemberOwner = (_function.InheritedFrom and _function.InheritedFrom or source.Name)
+                                    local valueType = (_function.ReturnType.Category == "Class" and "class" or "type")
+
+                                    local appendedFunction = functionsConcat .. wrapDevHubUrlMarkdown(_function.ReturnType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(_function.ReturnType.Name)) .. " " .. wrapDevHubUrlMarkdown(_function.Name, "/api-reference/function/" .. urlencode(realMemberOwner) .. "/" .. urlencode(_function.Name)) .. "(" .. getParametersString(_function) .. ")"
+                                    if #functionsConcat + #appendedFunction > 1024 then
+                                        -- Discord does not permit field values to go over 1024 characters, we can't show more properties
+                                        break
+                                    end
+
+                                    functionsConcat = appendedFunction
+                                    if i ~= #functions then
+                                        functionsConcat = functionsConcat .. "\n"
+                                    end
+
+                                    functionsShown = functionsShown + 1
+
+                                    if i == 5 and i ~= #functions and i < #functions then
+                                        break
+                                    end
+                                end
+
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Functions (" .. functionsShown .. "/" .. #functions .. ")",
+                                    value = functionsConcat
+                                }
+                            end
+
+                            if #events > 0 then
+                                local eventsConcat = ""
+                                local eventsShown = 0
+                                for i,event in pairs(events) do                                
+                                    local realMemberOwner = (event.InheritedFrom and event.InheritedFrom or source.Name)
+
+                                    local appendedEvent = eventsConcat .. wrapDevHubUrlMarkdown("RBXScriptSignal", "/api-reference/type/RBXScriptSignal") .. " " .. wrapDevHubUrlMarkdown(event.Name, "/api-reference/event/" .. urlencode(realMemberOwner) .. "/" .. urlencode(event.Name)) .. "(" .. getParametersString(event) .. ")"
+                                    if #eventsConcat + #appendedEvent > 1024 then
+                                        -- Discord does not permit field values to go over 1024 characters, we can't show more properties
+                                        break
+                                    end
+
+                                    eventsConcat = appendedEvent
+                                    if i ~= #events then
+                                        eventsConcat = eventsConcat .. "\n"
+                                    end
+
+                                    eventsShown = eventsShown + 1
+
+                                    if i == 5 and i ~= #functions and i < #functions then
+                                        break
+                                    end
+                                end
+
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Events (" .. eventsShown .. "/" .. #events .. ")",
+                                    value = eventsConcat
+                                }
+                            end
                         else
+                            local memberSource = document.inner_hits.Members.hits.hits[1]._source
+                            responseEmbed.author = {
+                                name = memberSource.MemberType .. " " .. memberSource.Name,
+                                icon_url = client.user.avatarURL
+                            }
+
+                            if memberSource.Tags ~= nil then
+                                local tagsConcat = ""
+                                for i,tag in pairs(memberSource.Tags) do
+                                    tagsConcat = tagsConcat .. tag
+                                    if i ~= #memberSource.Tags then
+                                        tagsConcat = tagsConcat .. ", "
+                                    end
+                                end
+
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Tags",
+                                    value = tagsConcat,
+                                    inline = true
+                                }
+                            else
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Tags",
+                                    value = "None",
+                                    inline = true
+                                }
+                            end
+
+                            if memberSource.Security ~= nil then
+                                local value = "Read: " .. memberSource.Security.Read .. "\nWrite: " .. memberSource.Security.Write
+                                if memberSource.Security.Read == memberSource.Security.Write then
+                                    value = memberSource.Security.Read
+                                end
+
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Security",
+                                    value = value,
+                                    inline = true
+                                }
+                            else
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Security",
+                                    value = "None",
+                                    inline = true
+                                }
+                            end
+                            
                             responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Security",
-                                value = "None",
+                                name = "Member Of",
+                                value = wrapDevHubUrlMarkdown(source.Name, "/api-reference/class/" .. urlencode(source.Name)),
                                 inline = true
                             }
+
+                            if memberSource.MemberType == "Property" then
+                                responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/property/" .. urlencode(source.Name) .. "/" .. urlencode(memberSource.Name)
+                                local valueType = (memberSource.ValueType.Category == "Class" and "class" or "type")
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Type",
+                                    value = wrapDevHubUrlMarkdown(memberSource.ValueType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(memberSource.ValueType.Name)),
+                                    inline = true
+                                }
+                            elseif memberSource.MemberType == "Function" then
+                                responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/function/" .. urlencode(source.Name) .. "/" .. urlencode(memberSource.Name)
+                                local valueType = (memberSource.ReturnType.Category == "Class" and "class" or "type")
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Returns",
+                                    value = wrapDevHubUrlMarkdown(memberSource.ReturnType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(memberSource.ReturnType.Name)),
+                                    inline = true
+                                }
+
+                                local parameters = getParametersString(memberSource)
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Parameters",
+                                    value = parameters == "" and "None" or parameters,
+                                    inline = true
+                                }
+                            elseif memberSource.MemberType == "Event" then
+                                responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/event/" .. urlencode(source.Name) .. "/" .. urlencode(memberSource.Name)
+                                local parameters = getParametersString(memberSource)
+                                responseEmbed.fields[#responseEmbed.fields + 1] = {
+                                    name = "Parameters",
+                                    value = parameters == "" and "None" or parameters,
+                                    inline = true
+                                }
+                            end
                         end
+                    else
+                        local authorName = ""
+
+                        if expandedQuery == "PROPERTIES" then
+                            authorName = "Properties for " .. source.Name
+                        elseif expandedQuery == "FUNCTIONS" then
+                            authorName = "Functions for " .. source.Name
+                        elseif expandedQuery == "EVENTS" then
+                            authorName = "Events for " .. source.Name
+                        end
+
+                        responseEmbed.author = {
+                            name = authorName,
+                            url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/class/" .. urlencode(source.Name),
+                            icon_url = client.user.avatarURL
+                        }
 
                         local properties = {}
                         local functions = {}
@@ -305,182 +565,87 @@ client:on("messageCreate", function(message)
                             end
                         end
 
-                        if #properties > 0 then
-                            local propertiesConcat = ""
-                            local propertiesShown = 0
-                            for i,property in pairs(properties) do
-                                local realMemberOwner = (property.InheritedFrom and property.InheritedFrom or source.Name)
-                                local valueType = (property.ValueType.Category == "Class" and "class" or "type")
+                        if expandedQuery == "PROPERTIES" then
+                            if #properties > 0 then
+                                local propertiesConcat = ""
+                                local propertiesShown = 0
+                                for i,property in pairs(properties) do
+                                    local realMemberOwner = (property.InheritedFrom and property.InheritedFrom or source.Name)
+                                    local valueType = (property.ValueType.Category == "Class" and "class" or "type")
 
-                                local appendedProperty = propertiesConcat .. wrapDevHubUrlMarkdown(property.ValueType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(property.ValueType.Name)) .. " " .. wrapDevHubUrlMarkdown(property.Name, "/api-reference/property/" .. urlencode(realMemberOwner) .. "/" .. urlencode(property.Name))
-                                if #propertiesConcat + #appendedProperty > 1024 then
-                                    -- Discord does not permit field values to go over 1024 characters, we can't show more properties
-                                    break
-                                end
-                                
-                                propertiesConcat = appendedProperty
-                                if i ~= #properties then
-                                    propertiesConcat = propertiesConcat .. "\n"
+                                    local appendedProperty = propertiesConcat .. wrapDevHubUrlMarkdown(property.ValueType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(property.ValueType.Name)) .. " " .. wrapDevHubUrlMarkdown(property.Name, "/api-reference/property/" .. urlencode(realMemberOwner) .. "/" .. urlencode(property.Name))
+                                    if #propertiesConcat + #appendedProperty > 2048 then
+                                        -- Discord does not permit description values to go over 2048 characters, we can't show more properties
+                                        break
+                                    end
+                                    
+                                    propertiesConcat = appendedProperty
+                                    if i ~= #properties then
+                                        propertiesConcat = propertiesConcat .. "\n"
+                                    end
+
+                                    propertiesShown = propertiesShown + 1
                                 end
 
-                                propertiesShown = propertiesShown + 1
-
-                                if i == 5 and i ~= #properties and i < #properties then
-                                    break
-                                end
+                                responseEmbed.description = propertiesConcat
+                            else
+                                responseEmbed.description = "This class has no properties"
                             end
-
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Properties (" .. propertiesShown .. "/" .. #properties .. ")",
-                                value = propertiesConcat
-                            }
                         end
 
-                        if #functions > 0 then
-                            local functionsConcat = ""
-                            local functionsShown = 0
-                            for i,_function in pairs(functions) do
-                                local realMemberOwner = (_function.InheritedFrom and _function.InheritedFrom or source.Name)
-                                local valueType = (_function.ReturnType.Category == "Class" and "class" or "type")
+                        if expandedQuery == "FUNCTIONS" then
+                            if #functions > 0 then
+                                local functionsConcat = ""
+                                local functionsShown = 0
+                                for i,_function in pairs(functions) do
+                                    local realMemberOwner = (_function.InheritedFrom and _function.InheritedFrom or source.Name)
+                                    local valueType = (_function.ReturnType.Category == "Class" and "class" or "type")
 
-                                local appendedFunction = functionsConcat .. wrapDevHubUrlMarkdown(_function.ReturnType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(_function.ReturnType.Name)) .. " " .. wrapDevHubUrlMarkdown(_function.Name, "/api-reference/function/" .. urlencode(realMemberOwner) .. "/" .. urlencode(_function.Name)) .. "(" .. getParametersString(_function) .. ")"
-                                if #functionsConcat + #appendedFunction > 1024 then
-                                    -- Discord does not permit field values to go over 1024 characters, we can't show more properties
-                                    break
+                                    local appendedFunction = functionsConcat .. wrapDevHubUrlMarkdown(_function.ReturnType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(_function.ReturnType.Name)) .. " " .. wrapDevHubUrlMarkdown(_function.Name, "/api-reference/function/" .. urlencode(realMemberOwner) .. "/" .. urlencode(_function.Name)) .. "(" .. getParametersString(_function) .. ")"
+                                    if #functionsConcat + #appendedFunction > 1024 then
+                                        -- Discord does not permit field values to go over 1024 characters, we can't show more properties
+                                        break
+                                    end
+
+                                    functionsConcat = appendedFunction
+                                    if i ~= #functions then
+                                        functionsConcat = functionsConcat .. "\n"
+                                    end
+
+                                    functionsShown = functionsShown + 1
                                 end
 
-                                functionsConcat = appendedFunction
-                                if i ~= #functions then
-                                    functionsConcat = functionsConcat .. "\n"
-                                end
-
-                                functionsShown = functionsShown + 1
-
-                                if i == 5 and i ~= #functions and i < #functions then
-                                    break
-                                end
+                                responseEmbed.description = functionsConcat
+                            else
+                                responseEmbed.description = "This class has no functions"
                             end
-
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Functions (" .. functionsShown .. "/" .. #functions .. ")",
-                                value = functionsConcat
-                            }
                         end
 
-                        if #events > 0 then
-                            local eventsConcat = ""
-                            local eventsShown = 0
-                            for i,event in pairs(events) do                                
-                                local realMemberOwner = (event.InheritedFrom and event.InheritedFrom or source.Name)
+                        if expandedQuery == "EVENTS" then
+                            if #events > 0 then
+                                local eventsConcat = ""
+                                local eventsShown = 0
+                                for i,event in pairs(events) do                                
+                                    local realMemberOwner = (event.InheritedFrom and event.InheritedFrom or source.Name)
 
-                                local appendedEvent = eventsConcat .. wrapDevHubUrlMarkdown("RBXScriptSignal", "/api-reference/type/RBXScriptSignal") .. " " .. wrapDevHubUrlMarkdown(event.Name, "/api-reference/event/" .. urlencode(realMemberOwner) .. "/" .. urlencode(event.Name)) .. "(" .. getParametersString(event) .. ")"
-                                if #eventsConcat + #appendedEvent > 1024 then
-                                    -- Discord does not permit field values to go over 1024 characters, we can't show more properties
-                                    break
+                                    local appendedEvent = eventsConcat .. wrapDevHubUrlMarkdown("RBXScriptSignal", "/api-reference/type/RBXScriptSignal") .. " " .. wrapDevHubUrlMarkdown(event.Name, "/api-reference/event/" .. urlencode(realMemberOwner) .. "/" .. urlencode(event.Name)) .. "(" .. getParametersString(event) .. ")"
+                                    if #eventsConcat + #appendedEvent > 1024 then
+                                        -- Discord does not permit field values to go over 1024 characters, we can't show more properties
+                                        break
+                                    end
+
+                                    eventsConcat = appendedEvent
+                                    if i ~= #events then
+                                        eventsConcat = eventsConcat .. "\n"
+                                    end
+
+                                    eventsShown = eventsShown + 1
                                 end
 
-                                eventsConcat = appendedEvent
-                                if i ~= #events then
-                                    eventsConcat = eventsConcat .. "\n"
-                                end
-
-                                eventsShown = eventsShown + 1
-
-                                if i == 5 and i ~= #functions and i < #functions then
-                                    break
-                                end
+                                responseEmbed.description = eventsConcat
+                            else
+                                responseEmbed.description = "This class has no events"
                             end
-
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Events (" .. eventsShown .. "/" .. #events .. ")",
-                                value = eventsConcat
-                            }
-                        end
-                    else
-                        local memberSource = document.inner_hits.Members.hits.hits[1]._source
-                        responseEmbed.author = {
-                            name = memberSource.MemberType .. " " .. memberSource.Name,
-                            icon_url = client.user.avatarURL
-                        }
-
-                        if memberSource.Tags ~= nil then
-                            local tagsConcat = ""
-                            for i,tag in pairs(memberSource.Tags) do
-                                tagsConcat = tagsConcat .. tag
-                                if i ~= #memberSource.Tags then
-                                    tagsConcat = tagsConcat .. ", "
-                                end
-                            end
-
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Tags",
-                                value = tagsConcat,
-                                inline = true
-                            }
-                        else
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Tags",
-                                value = "None",
-                                inline = true
-                            }
-                        end
-
-                        if memberSource.Security ~= nil then
-                            local value = "Read: " .. memberSource.Security.Read .. "\nWrite: " .. memberSource.Security.Write
-                            if memberSource.Security.Read == memberSource.Security.Write then
-                                value = memberSource.Security.Read
-                            end
-
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Security",
-                                value = value,
-                                inline = true
-                            }
-                        else
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Security",
-                                value = "None",
-                                inline = true
-                            }
-                        end
-                        
-                        responseEmbed.fields[#responseEmbed.fields + 1] = {
-                            name = "Member Of",
-                            value = wrapDevHubUrlMarkdown(source.Name, "/api-reference/class/" .. urlencode(source.Name)),
-                            inline = true
-                        }
-
-                        if memberSource.MemberType == "Property" then
-                            responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/property/" .. urlencode(source.Name) .. "/" .. urlencode(memberSource.Name)
-                            local valueType = (memberSource.ValueType.Category == "Class" and "class" or "type")
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Type",
-                                value = wrapDevHubUrlMarkdown(memberSource.ValueType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(memberSource.ValueType.Name)),
-                                inline = true
-                            }
-                        elseif memberSource.MemberType == "Function" then
-                            responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/function/" .. urlencode(source.Name) .. "/" .. urlencode(memberSource.Name)
-                            local valueType = (memberSource.ReturnType.Category == "Class" and "class" or "type")
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Returns",
-                                value = wrapDevHubUrlMarkdown(memberSource.ReturnType.Name, "/api-reference/" .. urlencode(valueType) .. "/" .. urlencode(memberSource.ReturnType.Name)),
-                                inline = true
-                            }
-
-                            local parameters = getParametersString(memberSource)
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Parameters",
-                                value = parameters == "" and "None" or parameters,
-                                inline = true
-                            }
-                        elseif memberSource.MemberType == "Event" then
-                            responseEmbed.author.url = consts.ROBLOX_DEV_HUB_URL .. "/api-reference/event/" .. urlencode(source.Name) .. "/" .. urlencode(memberSource.Name)
-                            local parameters = getParametersString(memberSource)
-                            responseEmbed.fields[#responseEmbed.fields + 1] = {
-                                name = "Parameters",
-                                value = parameters == "" and "None" or parameters,
-                                inline = true
-                            }
                         end
                     end
                 end
