@@ -183,7 +183,7 @@ client:on("messageCreate", function(message)
         end
 
         local fullArgs = message.content:split(" ")
-        if fullArgs[1] == client.user.mentionString then
+        if fullArgs[1] == client.user.mentionString or fullArgs[1] == "!rapi" then
             if #fullArgs > 1 then
                 local args = table.slice(fullArgs, 2)
                 local query = args[1]:split("%.")
