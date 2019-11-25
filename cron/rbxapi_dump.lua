@@ -109,10 +109,47 @@ coroutine.wrap(function()
 
         -- Update the elasticsearch mappings (fails if it's already mapped)
         local body = {
+            settings = {
+                analysis = {
+                    analyzer=  {
+                        autocomplete = {
+                            tokenizer = "autocomplete",
+                            filter = {
+                                "lowercase"
+                            }
+                        },
+                        autocomplete_search = {
+                            tokenizer = "lowercase"
+                        }
+                    },
+                    tokenizer = {
+                        autocomplete = {
+                            type = "edge_ngram",
+                            min_gram = 2,
+                            max_gram = 50,
+                            token_chars = {
+                                "letter"
+                            }
+                        }
+                    }
+                }
+            },
             mappings = {
                 properties =  {
                     Members = {
-                        type = "nested"
+                        type = "nested",
+                        properties = {
+                            Name = {
+                                type = "text",
+                                analyzer = "autocomplete",
+                                search_analyzer = "autocomplete_search"
+                            }
+                        }
+                    },
+                    Name = {
+                        type = "text",
+                        analyzer = "autocomplete",
+                        search_analyzer = "autocomplete_search"
                     }
                 }
             }
