@@ -500,22 +500,26 @@ client:on("messageCreate", function(message)
                     -- Find the suggestion responses
                     for _,response in pairs(searchResult.responses) do
                         if response.suggest ~= nil then
-                            for _,option in pairs(response.suggest.class_suggestion[1].options) do
-                                if totalSuggestions == 5 then
-                                    break
-                                end
+                            if #response.suggest.class_suggestion > 0 then
+                                for _,option in pairs(response.suggest.class_suggestion[1].options) do
+                                    if totalSuggestions == 5 then
+                                        break
+                                    end
 
-                                totalSuggestions = totalSuggestions + 1
-                                suggestions = suggestions .. "**" .. option.text .. "**" .. "\n"
+                                    totalSuggestions = totalSuggestions + 1
+                                    suggestions = suggestions .. "**" .. option.text .. "**" .. "\n"
+                                end
                             end
 
-                            for _,option in pairs(response.suggest.member_suggestion[1].options) do
-                                if totalSuggestions == 5 then
-                                    break
-                                end
+                            if #response.suggest.member_suggestion > 0 then
+                                for _,option in pairs(response.suggest.member_suggestion[1].options) do
+                                    if totalSuggestions == 5 then
+                                        break
+                                    end
 
-                                totalSuggestions = totalSuggestions + 1
-                                suggestions = suggestions .. "**" .. option.text .. "**" .. "\n"
+                                    totalSuggestions = totalSuggestions + 1
+                                    suggestions = suggestions .. "**" .. option.text .. "**" .. "\n"
+                                end
                             end
 
                             break
