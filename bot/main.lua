@@ -246,19 +246,21 @@ client:on("messageCreate", function(message)
                 local expandedQuery = nil
 
                 if #query == 1 then
-                    local thirdArgLower = string.lower(fullArgs[3])
-                    if thirdArgLower == "properties" or thirdArgLower == "props" or thirdArgLower == "p" then
-                        isExpansionQuery = true
-                        expandedQuery = "PROPERTIES"
-                        searchResult = esClient:msearch("robloxapi", getClassQuery(query[1]))
-                    elseif thirdArgLower == "functions" or thirdArgLower == "funcs" or thirdArgLower == "f" then
-                        isExpansionQuery = true
-                        expandedQuery = "FUNCTIONS"
-                        searchResult = esClient:msearch("robloxapi", getClassQuery(query[1]))
-                    elseif thirdArgLower == "events" or thirdArgLower == "evts" or thirdArgLower == "e" then
-                        isExpansionQuery = true
-                        expandedQuery = "EVENTS"
-                        searchResult = esClient:msearch("robloxapi", getClassQuery(query[1]))
+                    if #fullArgs == 3 then
+                        local thirdArgLower = string.lower(fullArgs[3])
+                        if thirdArgLower == "properties" or thirdArgLower == "props" or thirdArgLower == "p" then
+                            isExpansionQuery = true
+                            expandedQuery = "PROPERTIES"
+                            searchResult = esClient:msearch("robloxapi", getClassQuery(query[1]))
+                        elseif thirdArgLower == "functions" or thirdArgLower == "funcs" or thirdArgLower == "f" then
+                            isExpansionQuery = true
+                            expandedQuery = "FUNCTIONS"
+                            searchResult = esClient:msearch("robloxapi", getClassQuery(query[1]))
+                        elseif thirdArgLower == "events" or thirdArgLower == "evts" or thirdArgLower == "e" then
+                            isExpansionQuery = true
+                            expandedQuery = "EVENTS"
+                            searchResult = esClient:msearch("robloxapi", getClassQuery(query[1]))
+                        end
                     else
                         searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[1], nil, true))
                     end
