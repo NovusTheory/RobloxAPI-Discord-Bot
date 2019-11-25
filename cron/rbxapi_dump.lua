@@ -30,6 +30,16 @@ function deepcopy(orig, copies)
 end
 
 coroutine.wrap(function()
+    local forceDelete = false
+    local i = 2
+    while i <= #args do
+        local arg = args[i]
+        if arg == "-force-delete" then
+            forceDelete = true
+            i = i + 2
+        end
+    end
+
     -- Get the Roblox API dump
     local apiJson
     local res, body = request("GET", consts.ROBLOX_CDN_SETUP_URL .. "/versionQTStudio")
@@ -107,7 +117,18 @@ coroutine.wrap(function()
         end
         fs.closeSync(fd)
 
-        -- Update the elasticsearch mappings (fails if it's already mapped)
+        if forceDelete then
+            local res, body = request("DELETE", env.ELASTICSEARCH_ENDPOINT .. "/robloxapi")
+            if res.code ~= 200 then
+                local json = json.parse(body)
+                if json.error then
+                    print(res.code, body)
+                    error("Failed to delete elasticsearch index")
+                end
+            end
+        end
+
+        -- Update the elasticsearch mappings. Usually fails if the index exists already
         local body = {
             settings = {
                 analysis = {
@@ -160,7 +181,7 @@ coroutine.wrap(function()
         if res.code ~= 200 then
             local json = json.parse(body)
             if json.error.type == "resource_already_exists_exception" then
-                print("Elasticsearch mapping already exists, ignoring")
+                print("Elasticsearch index already exists. Use -force-delete command line argument to delete the index and allow updating")
             else
                 print(res.code, body)
                 error("Failed to update elasticsearch mappings")
