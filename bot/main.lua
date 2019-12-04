@@ -261,7 +261,9 @@ client:on("messageCreate", function(message)
                             expandedQuery = "EVENTS"
                             searchResult = esClient:msearch("robloxapi", getClassQuery(query[1]))
                         end
-                    else
+                    end
+                    
+                    if not isExpansionQuery then
                         searchResult = esClient:msearch("robloxapi", getClassOrMemberSearchQuery(query[1], nil, true))
                     end
                 elseif #query == 2 then
