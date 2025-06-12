@@ -24,7 +24,7 @@ local function addBotCredits(finalComponents)
     })
     table.insert(finalComponents, {
         type = 10,
-        content = "-# Made by [NovusTheory](https://github.com/NovusTheory)"
+        content = "-# Made by [NovusTheory](https://github.com/NovusTheory) • [Source Code](https://github.com/NovusTheory/RobloxAPI-Discord-Bot)"
     })
 end
 
