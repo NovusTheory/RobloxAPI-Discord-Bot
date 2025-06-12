@@ -11,7 +11,7 @@ net.serve(env.LISTEN_PORT, {
     address = env.LISTEN_ADDRESS,
     handleRequest = function(request)
         local body = request.body
-        if not request.query.debug then
+        if not env.DEBUG or not request.query.debug then
             local timestamp = request.headers["x-signature-timestamp"]
             local signature = request.headers["x-signature-ed25519"]
 
