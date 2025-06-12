@@ -3,14 +3,12 @@ local serde = require("@lune/serde")
 local task = require("@lune/task")
 local meilisearch = require("@self/../libs/meilisearch")
 local messages = require("@self/messages")
+local env = require("@self/env")
 
-local DISCORD_CLIENT_ID = ""
-local DISCORD_PUBLIC_KEY = ""
+local meiliClient = meilisearch.new("http://127.0.0.1:7700", env.MEILISEARCH_KEY)
 
-local meiliClient = meilisearch.new("http://127.0.0.1:7700")
-
-net.serve(80, {
-    address = "http://0.0.0.0",
+net.serve(env.LISTEN_PORT, {
+    address = env.LISTEN_ADDRESS,
     handleRequest = function(request)
         local body = request.body
         if not request.query.debug then
@@ -19,7 +17,7 @@ net.serve(80, {
 
             local message = timestamp .. body
             -- This is a function from a custom built Lune executable
-            if not serde.naclDetachedVerify(message, signature, DISCORD_PUBLIC_KEY) then
+            if not serde.naclDetachedVerify(message, signature, env.DISCORD_PUBLIC_KEY) then
                 return {
                     status = 401,
                     body = "401 Unauthorized"
@@ -154,7 +152,7 @@ net.serve(80, {
                     -- Delete Interaction Command
                     task.spawn(function()
                         net.request({
-                            url = `https://discord.com/api/v10/webhooks/{DISCORD_CLIENT_ID}/{json.token}/messages/@original`,
+                            url = `https://discord.com/api/v10/webhooks/{env.DISCORD_CLIENT_ID}/{json.token}/messages/@original`,
                             method = "DELETE",
                             headers = {
                                 ["Content-Type"] = "application/json"
