@@ -52,7 +52,7 @@ return {
             })
         end
 
-        if record.Documentation and record.Documentation.Description then
+        if record.Documentation and record.Documentation.Description and #record.Documentation.Description > 0 then
             local description = record.Documentation.Description
             local hasOverflow = false
             if #description > 3500 then
