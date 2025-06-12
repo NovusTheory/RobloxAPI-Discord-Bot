@@ -1,7 +1,3 @@
-local serde = require("@lune/serde")
-local fs = require("@lune/fs")
-local utils = require("@self/../libs/utils")
-
 local ROBLOX_CREATOR_HUB_DOMAIN = "https://create.roblox.com"
 
 local BACK_TYPE_MAP = {
