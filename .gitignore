@@ -1,2 +1,3 @@
-# Ignore dependencies
-deps/
+.vscode/
+roblox/
+cron/

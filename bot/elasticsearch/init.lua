@@ -1,3 +1,0 @@
-return {
-    Client = require("./client")
-}
