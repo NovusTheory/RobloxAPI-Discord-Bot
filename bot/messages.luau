@@ -68,10 +68,12 @@ return {
                 type = 10,
                 content = description
             })
-            table.insert(finalComponents, {
-                type = 10,
-                content = `[Read more]({docsLink})`
-            })
+            if hasOverflow then
+                table.insert(finalComponents, {
+                    type = 10,
+                    content = `[Read more]({docsLink})`
+                })
+            end
         end
 
         local memberButtonComponents = {}
