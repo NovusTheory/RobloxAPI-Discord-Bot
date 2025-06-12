@@ -119,7 +119,7 @@ net.serve(env.LISTEN_PORT, {
                             body = "400 Bad Request"
                         }
                     end
-                    local message = messages.createIntrospectionMessage(record, introspection, offset, 5)
+                    local message = messages.createIntrospectionMessage(record, introspection, offset, 4)
 
                     return {
                         status = 200,
