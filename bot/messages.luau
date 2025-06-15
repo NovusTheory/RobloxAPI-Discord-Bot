@@ -3,13 +3,16 @@ local ROBLOX_CREATOR_HUB_DOMAIN = "https://create.roblox.com"
 local BACK_TYPE_MAP = {
     Property = "properties",
     Function = "functions",
-    Event = "events"
+    Event = "events",
+    Callback = "callbacks"
 }
 
 local MEMBER_GROUP_LOCALE_MAP = {
     properties = "Properties",
     functions = "Functions",
     events = "Events",
+    callbacks = "Callbacks",
+    items = "Items"
 }
 
 local function addBotCredits(finalComponents)
@@ -24,8 +27,93 @@ local function addBotCredits(finalComponents)
     })
 end
 
+local function createPage(finalComponents, record, memberGroup, offset, limit)
+    if record[memberGroup] and #record[memberGroup] > 0 then
+        local lastIndex = 1
+        for i = offset,math.min(#record[memberGroup], offset + limit) do
+            lastIndex = i
+            local member = record[memberGroup][i]
+
+            if member.Id then
+                table.insert(finalComponents, {
+                    type = 9,
+                    components = {
+                        {
+                            type = 10,
+                            content = `### {member.Name}`
+                        }
+                    },
+                    accessory = {
+                        type = 2,
+                        label = "View",
+                        style = 2,
+                        custom_id = `1|{member.Id}`
+                    }
+                })
+            else
+                table.insert(finalComponents, {
+                    type = 10,
+                    content = `### {member.Name}{member.Value and ` - {member.Value}` or ""}`
+                })
+            end
+            if member.Documentation and member.Documentation.Summary and #member.Documentation.Summary > 0 then
+                table.insert(finalComponents, {
+                    type = 10,
+                    content = member.Documentation.Summary
+                })
+            end
+            if i ~= #record[memberGroup] then
+                table.insert(finalComponents, {
+                    type = 14,
+                    divider = false,
+                    spacing = 1
+                })
+            end
+        end
+        table.insert(finalComponents, {
+            type = 14,
+            divider = true,
+            spacing = 2
+        })
+        local actionButtons = {
+            {
+                type = 2,
+                label = "Go Back",
+                style = 2,
+                custom_id = `1|{record.Id}`
+            }
+        }
+        if lastIndex - limit ~= 1 and lastIndex - limit > 0 then
+            table.insert(actionButtons, {
+                type = 2,
+                label = "Previous Page",
+                style = 2,
+                custom_id = `0|{record.Id}|{string.lower(memberGroup)}|{offset - (limit + 1)}`
+            })
+        end
+        if lastIndex ~= #record[memberGroup] then
+            table.insert(actionButtons, {
+                type = 2,
+                label = "Next Page",
+                style = 2,
+                custom_id = `0|{record.Id}|{string.lower(memberGroup)}|{lastIndex + 1}`
+            })
+        end
+        table.insert(actionButtons, {
+            type = 2,
+            style = 4,
+            label = "Delete Message",
+            custom_id = `2`
+        })
+        table.insert(finalComponents, {
+            type = 1,
+            components = actionButtons
+        })
+    end
+end
+
 return {
-    createClassOrMemberMessage = function(record)
+    createApiOrMemberMessage = function(record)
         local docsLink = `{ROBLOX_CREATOR_HUB_DOMAIN}/docs/reference/engine/classes/{record.OwningClass and `{record.OwningClass}#{record.Name}` or record.Name}`
         local backType = BACK_TYPE_MAP[record.Type]
         
@@ -98,6 +186,22 @@ return {
                     custom_id = `0|{record.Id}|events`
                 })
             end
+            if record.Callbacks and #record.Callbacks > 0 then
+                table.insert(memberButtonComponents, {
+                    type = 2,
+                    style = 2,
+                    label = "Callbacks",
+                    custom_id = `0|{record.Id}|callbacks`
+                })
+            end
+            if record.Items and #record.Items > 0 then
+                table.insert(memberButtonComponents, {
+                    type = 2,
+                    style = 2,
+                    label = "Items",
+                    custom_id = `0|{record.Id}|items`
+                })
+            end
         else
             table.insert(memberButtonComponents, {
                 type = 2,
@@ -157,253 +261,15 @@ return {
         })
 
         if memberGroup == "properties" then
-            if record.Properties and #record.Properties > 0 then
-                local lastIndex = 1
-                for i = offset,math.min(#record.Properties, offset + limit) do
-                    lastIndex = i
-                    local member = record.Properties[i]
-
-                    table.insert(finalComponents, {
-                        type = 9,
-                        components = {
-                            {
-                                type = 10,
-                                content = `### {member.Name}`
-                            }
-                        },
-                        accessory = {
-                            type = 2,
-                            label = "View",
-                            style = 2,
-                            custom_id = `1|{member.Id}`
-                        }
-                    })
-                    if member.Documentation and member.Documentation.Summary and #member.Documentation.Summary > 0 then
-                        table.insert(finalComponents, {
-                            type = 10,
-                            content = member.Documentation.Summary
-                        })
-                    end
-                    if i ~= #record.Properties then
-                        table.insert(finalComponents, {
-                            type = 14,
-                            divider = false,
-                            spacing = 1
-                        })
-                    end
-                end
-                table.insert(finalComponents, {
-                    type = 14,
-                    divider = true,
-                    spacing = 2
-                })
-                local actionButtons = {
-                    {
-                        type = 2,
-                        label = "Go Back",
-                        style = 2,
-                        custom_id = `1|{record.Id}`
-                    }
-                }
-                if lastIndex - limit ~= 1 then
-                    table.insert(actionButtons, {
-                        type = 2,
-                        label = "Previous Page",
-                        style = 2,
-                        custom_id = `0|{record.Id}|properties|{offset - (limit + 1)}`
-                    })
-                end
-                if lastIndex ~= #record.Properties then
-                    table.insert(actionButtons, {
-                        type = 2,
-                        label = "Next Page",
-                        style = 2,
-                        custom_id = `0|{record.Id}|properties|{lastIndex + 1}`
-                    })
-                end
-                table.insert(actionButtons, {
-                    type = 2,
-                    style = 4,
-                    label = "Delete Message",
-                    custom_id = `2`
-                })
-                table.insert(finalComponents, {
-                    type = 1,
-                    components = actionButtons
-                }) 
-            end
-            
-            addBotCredits(finalComponents)
-            return {
-                components = {
-                    {
-                        type = 17,
-                        components = finalComponents
-                    }
-                }
-            }
+            createPage(finalComponents, record, "Properties", offset, limit)
         elseif memberGroup == "functions" then
-            if record.Functions and #record.Functions > 0 then
-                local lastIndex = 1
-                for i = offset,math.min(#record.Functions, offset + limit) do
-                    lastIndex = i
-                    local member = record.Functions[i]
-
-                    table.insert(finalComponents, {
-                        type = 9,
-                        components = {
-                            {
-                                type = 10,
-                                content = `### {member.Name}`
-                            }
-                        },
-                        accessory = {
-                            type = 2,
-                            label = "View",
-                            style = 2,
-                            custom_id = `1|{member.Id}`
-                        }
-                    })
-                    if member.Documentation and member.Documentation.Summary and #member.Documentation.Summary > 0 then
-                        table.insert(finalComponents, {
-                            type = 10,
-                            content = member.Documentation.Summary
-                        })
-                    end
-                    if i ~= #record.Functions then
-                        table.insert(finalComponents, {
-                            type = 14,
-                            divider = false,
-                            spacing = 1
-                        })
-                    end
-                end
-                table.insert(finalComponents, {
-                    type = 14,
-                    divider = true,
-                    spacing = 2
-                })
-                local actionButtons = {
-                    {
-                        type = 2,
-                        label = "Go Back",
-                        style = 2,
-                        custom_id = `1|{record.Id}`
-                    }
-                }
-                if lastIndex - limit ~= 1 then
-                    table.insert(actionButtons, {
-                        type = 2,
-                        label = "Previous Page",
-                        style = 2,
-                        custom_id = `0|{record.Id}|functions|{offset - (limit + 1)}`
-                    })
-                end
-                if lastIndex ~= #record.Functions then
-                    table.insert(actionButtons, {
-                        type = 2,
-                        label = "Next Page",
-                        style = 2,
-                        custom_id = `0|{record.Id}|functions|{lastIndex + 1}`
-                    })
-                end
-                table.insert(actionButtons, {
-                    type = 2,
-                    style = 4,
-                    label = "Delete Message",
-                    custom_id = `2`
-                })
-                table.insert(finalComponents, {
-                    type = 1,
-                    components = actionButtons
-                })
-            end
-
-            addBotCredits(finalComponents)
-            return {
-                components = {
-                    {
-                        type = 17,
-                        components = finalComponents
-                    }
-                }
-            }
+            createPage(finalComponents, record, "Functions", offset, limit)
         elseif memberGroup == "events" then
-            if record.Events and #record.Events > 0 then
-                local lastIndex = 1
-                for i = offset,math.min(#record.Events, offset + limit) do
-                    lastIndex = i
-                    local member = record.Events[i]
-
-                    table.insert(finalComponents, {
-                        type = 9,
-                        components = {
-                            {
-                                type = 10,
-                                content = `### {member.Name}`
-                            }
-                        },
-                        accessory = {
-                            type = 2,
-                            label = "View",
-                            style = 2,
-                            custom_id = `1|{member.Id}`
-                        }
-                    })
-                    if member.Documentation and member.Documentation.Summary and #member.Documentation.Summary > 0 then
-                        table.insert(finalComponents, {
-                            type = 10,
-                            content = member.Documentation.Summary
-                        })
-                    end
-                    if i ~= #record.Events then
-                        table.insert(finalComponents, {
-                            type = 14,
-                            divider = false,
-                            spacing = 1
-                        })
-                    end
-                end
-                table.insert(finalComponents, {
-                    type = 14,
-                    divider = true,
-                    spacing = 2
-                })
-                local actionButtons = {
-                    {
-                        type = 2,
-                        label = "Go Back",
-                        style = 2,
-                        custom_id = `1|{record.Id}`
-                    }
-                }
-                if lastIndex - limit ~= 1 then
-                    table.insert(actionButtons, {
-                        type = 2,
-                        label = "Previous Page",
-                        style = 2,
-                        custom_id = `0|{record.Id}|events|{offset - (limit + 1)}`
-                    })
-                end
-                if lastIndex ~= #record.Events then
-                    table.insert(actionButtons, {
-                        type = 2,
-                        label = "Next Page",
-                        style = 2,
-                        custom_id = `0|{record.Id}|events|{lastIndex + 1}`
-                    })
-                end
-                table.insert(actionButtons, {
-                    type = 2,
-                    style = 4,
-                    label = "Delete Message",
-                    custom_id = `2`
-                })
-                table.insert(finalComponents, {
-                    type = 1,
-                    components = actionButtons
-                }) 
-            end
+            createPage(finalComponents, record, "Events", offset, limit)
+        elseif memberGroup == "callbacks" then
+            createPage(finalComponents, record, "Callbacks", offset, limit)
+        elseif memberGroup == "items" then
+            createPage(finalComponents, record, "Items", offset, limit)
         end
 
         addBotCredits(finalComponents)

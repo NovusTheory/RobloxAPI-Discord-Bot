@@ -93,7 +93,7 @@ net.serve(env.LISTEN_PORT, {
                         local documentId = json.data.options[1].value
                         local record = meiliClient.getDocument("api", documentId)
 
-                        local message = messages.createClassOrMemberMessage(record)
+                        local message = messages.createApiOrMemberMessage(record)
 
                         return {
                             status = 200,
@@ -163,7 +163,7 @@ net.serve(env.LISTEN_PORT, {
                         local documentId = actionMap[2]
                         local record = meiliClient.getDocument("api", documentId)
 
-                        local message = messages.createClassOrMemberMessage(record)
+                        local message = messages.createApiOrMemberMessage(record)
                         
                         return {
                             status = 200,
