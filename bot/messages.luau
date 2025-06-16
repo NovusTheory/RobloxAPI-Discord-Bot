@@ -1,12 +1,14 @@
-local ROBLOX_CREATOR_HUB_DOMAIN = "https://create.roblox.com"
+local net = require("@lune/net")
+local serde = require("@lune/serde")
+local env = require("@self/env")
 
+local ROBLOX_CREATOR_HUB_DOMAIN = "https://create.roblox.com"
 local BACK_TYPE_MAP = {
     Property = "properties",
     Function = "functions",
     Event = "events",
     Callback = "callbacks"
 }
-
 local MEMBER_GROUP_LOCALE_MAP = {
     properties = "Properties",
     functions = "Functions",
@@ -14,6 +16,8 @@ local MEMBER_GROUP_LOCALE_MAP = {
     callbacks = "Callbacks",
     items = "Items"
 }
+
+local emojiMap = {}
 
 local function addBotCredits(finalComponents)
     table.insert(finalComponents, {
@@ -112,15 +116,29 @@ local function createPage(finalComponents, record, memberGroup, offset, limit)
     end
 end
 
+local currentEmojisResponse = net.request({
+    url = `https://discord.com/api/v10/applications/{env.DISCORD_CLIENT_ID}/emojis`,
+    method = "GET",
+    headers = {
+        ["Authorization"] = `Bot {env.DISCORD_TOKEN}`
+    }
+})
+local body = serde.decode("json", currentEmojisResponse.body)
+local emojiItems = body.items
+for i,emojiItem in emojiItems do
+    emojiMap[emojiItem.name] = emojiItem.id
+end
+
 return {
     createApiOrMemberMessage = function(record)
         local docsLink = `{ROBLOX_CREATOR_HUB_DOMAIN}/docs/reference/engine/classes/{record.OwningClass and `{record.OwningClass}#{record.Name}` or record.Name}`
         local backType = BACK_TYPE_MAP[record.Type]
+        local hasEmoji = not not emojiMap[record.Name]
         
         local finalComponents = {
             {
                 type = 10,
-                content = `# [{record.Name}]({docsLink})`
+                content = `# [{hasEmoji and `<:{record.Name}:{emojiMap[record.Name]}> ` or ""}{record.Name}]({docsLink})`
             }
         }
 
@@ -247,12 +265,13 @@ return {
     createIntrospectionMessage = function(record, memberGroup, offset, limit)
         local offset = offset and tonumber(offset) or 1
         local docsLink = `{ROBLOX_CREATOR_HUB_DOMAIN}/docs/reference/engine/classes/{record.Name}`
+        local hasEmoji = not not emojiMap[record.Name]
         
         local finalComponents = {}
 
         table.insert(finalComponents, {
             type = 10,
-            content = `# [{record.Name}]({docsLink}) {MEMBER_GROUP_LOCALE_MAP[memberGroup]}`
+            content = `# [{hasEmoji and `<:{record.Name}:{emojiMap[record.Name]}> ` or ""}{record.Name}]({docsLink}) {MEMBER_GROUP_LOCALE_MAP[memberGroup]}`
         })
         table.insert(finalComponents, {
             type = 14,
