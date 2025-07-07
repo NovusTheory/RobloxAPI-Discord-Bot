@@ -1,5 +1,6 @@
 local net = require("@lune/net")
 local serde = require("@lune/serde")
+local fs = require("@lune/fs")
 local env = require("@self/env")
 
 local ROBLOX_CREATOR_HUB_DOMAIN = "https://create.roblox.com"
@@ -18,12 +19,24 @@ local MEMBER_GROUP_LOCALE_MAP = {
 }
 
 local emojiMap = {}
+local cronData = serde.decode("json", fs.readFile("roblox/cron_data.json"))
+local cronDataMetadata = fs.metadata("roblox/cron_data.json")
 
 local function addBotCredits(finalComponents)
+    local metadata = fs.metadata("roblox/cron_data.json")
+    if metadata.modifiedAt.unixTimestamp ~= cronDataMetadata.modifiedAt.unixTimestamp then
+        cronData = serde.decode("json", fs.readFile("roblox/cron_data.json"))
+        cronDataMetadata = metadata
+    end
+
     table.insert(finalComponents, {
         type = 14,
         divider = false,
         spacing = 1
+    })
+    table.insert(finalComponents, {
+        type = 10,
+        content = `-# Using Roblox API [{cronData.version}]({ROBLOX_CREATOR_HUB_DOMAIN}/docs/release-notes/release-notes-{cronData.buildHash[2]})`
     })
     table.insert(finalComponents, {
         type = 10,
@@ -34,6 +47,7 @@ end
 local function createPage(finalComponents, record, memberGroup, offset, limit)
     if record[memberGroup] and #record[memberGroup] > 0 then
         local lastIndex = 1
+        local oneMemberHasDocumentation = false
         for i = offset,math.min(#record[memberGroup], offset + limit) do
             lastIndex = i
             local member = record[memberGroup][i]
@@ -61,6 +75,7 @@ local function createPage(finalComponents, record, memberGroup, offset, limit)
                 })
             end
             if member.Documentation and member.Documentation.Summary and #member.Documentation.Summary > 0 then
+                oneMemberHasDocumentation = true
                 table.insert(finalComponents, {
                     type = 10,
                     content = member.Documentation.Summary
@@ -73,6 +88,13 @@ local function createPage(finalComponents, record, memberGroup, offset, limit)
                     spacing = 1
                 })
             end
+        end
+        if oneMemberHasDocumentation then
+            -- Documentation credits
+            table.insert(finalComponents, {
+                type = 10,
+                content = "-# Documentation provided by [roblox/creator-docs](https://github.com/Roblox/creator-docs)"
+            })
         end
         table.insert(finalComponents, {
             type = 14,
@@ -235,11 +257,13 @@ return {
             custom_id = `2`
         })
         
-        -- Documentation credits
-        table.insert(finalComponents, {
-            type = 10,
-            content = "-# Documentation provided by [roblox/creator-docs](https://github.com/Roblox/creator-docs)"
-        })
+        if record.Documentation and record.Documentation.Description and #record.Documentation.Description > 0 then
+            -- Documentation credits
+            table.insert(finalComponents, {
+                type = 10,
+                content = "-# Documentation provided by [roblox/creator-docs](https://github.com/Roblox/creator-docs)"
+            })
+        end
         
         table.insert(finalComponents, {
             type = 14,
