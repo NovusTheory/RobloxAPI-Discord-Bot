@@ -182,21 +182,62 @@ return {
 
         if record.Documentation and record.Documentation.Description and #record.Documentation.Description > 0 then
             local description = record.Documentation.Description
-            local hasOverflow = false
-            if #description > 3500 then
-                description = string.sub(description, 1, 3500)
-                description ..= `...`
-                hasOverflow = true
-            end
-            table.insert(finalComponents, {
-                type = 10,
-                content = description
-            })
-            if hasOverflow then
+
+            -- This splits the description by a custom image marker
+            local imgSplitDescription = string.split(description, "<!img!>");
+            if #imgSplitDescription > 1 then
+                local charCount = 0
+                local hasOverflow = false
+                for index,split in imgSplitDescription do
+                    if string.sub(split, 1, 5) == "<img>" then
+                        local imgUrl = string.sub(split, 6)
+                        table.insert(finalComponents, {
+                            type = 12,
+                            items = {
+                                {
+                                    media = {
+                                        url = imgUrl
+                                    }
+                                }
+                            }
+                        })
+                    else
+                        if split ~= "" and split ~= "\n" and not hasOverflow then
+                            if charCount + #split > 3000 then
+                                split = string.sub(description, 1, 3000 - charCount)
+                                description ..= `...`
+                                hasOverflow = true
+                            end
+                            table.insert(finalComponents, {
+                                type = 10,
+                                content = split
+                            })
+                            if hasOverflow then
+                                table.insert(finalComponents, {
+                                    type = 10,
+                                    content = `[Read more]({docsLink})`
+                                })
+                            end
+                        end
+                    end
+                end
+            else
+                local hasOverflow = false
+                if #description > 3000 then
+                    description = string.sub(description, 1, 3000)
+                    description ..= `...`
+                    hasOverflow = true
+                end
                 table.insert(finalComponents, {
                     type = 10,
-                    content = `[Read more]({docsLink})`
+                    content = description
                 })
+                if hasOverflow then
+                    table.insert(finalComponents, {
+                        type = 10,
+                        content = `[Read more]({docsLink})`
+                    })
+                end
             end
         end
 
