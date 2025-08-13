@@ -153,7 +153,7 @@ end
 
 return {
     createApiOrMemberMessage = function(record)
-        local docsLink = `{ROBLOX_CREATOR_HUB_DOMAIN}/docs/reference/engine/classes/{record.OwningClass and `{record.OwningClass}#{record.Name}` or record.Name}`
+        local docsLink = `{ROBLOX_CREATOR_HUB_DOMAIN}/docs/reference/engine/{record.Type == "Enum" and "enums" or "classes"}/{record.OwningClass and `{record.OwningClass}#{record.Name}` or record.Name}`
         local backType = BACK_TYPE_MAP[record.Type]
         local hasEmoji = not not emojiMap[record.Name]
         
@@ -329,7 +329,7 @@ return {
     end,
     createIntrospectionMessage = function(record, memberGroup, offset, limit)
         local offset = offset and tonumber(offset) or 1
-        local docsLink = `{ROBLOX_CREATOR_HUB_DOMAIN}/docs/reference/engine/classes/{record.Name}`
+        local docsLink = `{ROBLOX_CREATOR_HUB_DOMAIN}/docs/reference/engine/{record.Type == "Enum" and "enums" or "classes"}/{record.Name}`
         local hasEmoji = not not emojiMap[record.Name]
         
         local finalComponents = {}
